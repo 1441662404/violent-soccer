@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>英超比分条</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'PingFang SC', 'Helvetica Neue', sans-serif;
+    background: linear-gradient(135deg, #1a3a2a 0%, #2a5a3a 50%, #1a3a2a 100%);
+    min-height: 100vh;
+    position: relative;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .pitch-lines {
+    position: absolute;
+    inset: 0;
+    background: 
+      linear-gradient(90deg, transparent 49.5%, rgba(255,255,255,0.05) 49.5%, rgba(255,255,255,0.05) 50.5%, transparent 50.5%),
+      linear-gradient(0deg, transparent 49.5%, rgba(255,255,255,0.05) 49.5%, rgba(255,255,255,0.05) 50.5%, transparent 50.5%);
+  }
+
+  /* 英超风格比分条 */
+  .premier-score {
+    position: absolute;
+    top: 30px;
+    left: 30px;
+    display: flex;
+    flex-direction: column;
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  }
+
+  /* 上排：队名 + 比分 */
+  .ps-top {
+    display: flex;
+    align-items: stretch;
+    height: 32px;
+  }
+
+  .ps-team {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 70px; /* 固定宽度，左右对齐 */
+    padding: 0 16px;
+    background: rgba(58, 26, 92, 0.75); /* 半透明深紫色 */
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+
+  /* 左边队：左侧蓝色竖条 */
+  .ps-team.home::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: #6cabdd; /* 曼城蓝 */
+  }
+
+  /* 右边队：右侧红色竖条 */
+  .ps-team.away::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: #e03a3a; /* 南安普顿红 */
+  }
+
+  .ps-score {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 12px;
+    background: rgba(0, 217, 126, 0.85); /* 半透明亮绿色 */
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    color: #000;
+    font-size: 16px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 1px;
+    overflow: hidden;
+    min-width: 50px;
+  }
+
+  /* 比分数字滚动动画 */
+  .score-num {
+    display: inline-block;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .score-num.rolling {
+    animation: numRoll 0.4s ease-out;
+  }
+
+  @keyframes numRoll {
+    0% { transform: translateY(-100%); opacity: 0; }
+    100% { transform: translateY(0); opacity: 1; }
+  }
+
+  /* 下排：时间 */
+  .ps-time {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 24px;
+    background: rgba(255, 255, 255, 0.85); /* 半透明白色 */
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    color: #333;
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    overflow: hidden;
+  }
+
+  /* GOAL 动画层 */
+  .goal-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #ffd700;
+    color: #000;
+    font-size: 13px;
+    font-weight: 900;
+    letter-spacing: 3px;
+    transform: translateY(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .goal-overlay.show {
+    transform: translateY(0);
+  }
+
+  /* 测试按钮 */
+  .test-btn {
+    position: absolute;
+    bottom: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 10px 24px;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 8px;
+    color: #fff;
+    font-size: 13px;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+    transition: all 0.2s;
+  }
+  .test-btn:hover {
+    background: rgba(255,255,255,0.2);
+  }
+
+  .variant-label {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.3);
+    font-size: 12px;
+    letter-spacing: 2px;
+  }
+</style>
+</head>
+<body>
+
+<div class="pitch-lines"></div>
+
+<div class="premier-score">
+  <div class="ps-top">
+    <div class="ps-team home">BLUE</div>
+    <div class="ps-score">
+      <span class="score-num" id="score-num">1-0</span>
+    </div>
+    <div class="ps-team away">RED</div>
+  </div>
+  <div class="ps-time">
+    <span id="time-text">13:14</span>
+    <div class="goal-overlay" id="goal-overlay">⚽ GOAL!</div>
+  </div>
+</div>
+
+<button class="test-btn" onclick="triggerGoal()">⚽ 测试进球动画</button>
+
+<div class="variant-label">英超转播风格比分条 · 带 GOAL 弹出动画</div>
+
+<script>
+function triggerGoal() {
+  const overlay = document.getElementById('goal-overlay');
+  const scoreNum = document.getElementById('score-num');
+  
+  // 显示 GOAL 动画
+  overlay.classList.add('show');
+  
+  // 3秒后恢复
+  setTimeout(() => {
+    overlay.classList.remove('show');
+    // 数字滚动更新比分
+    scoreNum.classList.remove('rolling');
+    void scoreNum.offsetWidth; // 重触发动画
+    scoreNum.textContent = '2-0';
+    scoreNum.classList.add('rolling');
+  }, 3000);
+}
+</script>
+
+</body>
+</html>

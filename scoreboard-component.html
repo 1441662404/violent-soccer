@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>足球计分板 UI 组件</title>
+<style>
+  /* ============================================
+     ★ 核心 UI 样式 - 可以直接复制到项目里用
+     ============================================ */
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  /* 计分板容器 */
+  .match-scoreboard {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    display: flex;
+    flex-direction: column;
+    border-radius: 0; /* 方正无圆角 */
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif;
+  }
+
+  /* 上排：队名 + 比分 */
+  .ms-row {
+    display: flex;
+    align-items: stretch;
+    height: 32px;
+  }
+
+  /* 队名框 */
+  .ms-team {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 70px;
+    background: rgba(58, 26, 92, 0.75);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+
+  /* 主队：左侧蓝色竖条 */
+  .ms-team.home::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: #6cabdd;
+  }
+
+  /* 客队：右侧红色竖条 */
+  .ms-team.away::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: #e03a3a;
+  }
+
+  /* 比分框 */
+  .ms-score {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px; /* 固定宽度，时间条与其对齐 */
+    background: rgba(0, 217, 126, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    color: #000;
+    font-size: 16px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 1px;
+    overflow: hidden;
+  }
+
+  /* 比分数字（带滚动动画） */
+  .ms-score-num {
+    display: inline-block;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .ms-score-num.rolling {
+    animation: numRoll 0.4s ease-out;
+  }
+
+  @keyframes numRoll {
+    0% { transform: translateY(-100%); opacity: 0; }
+    100% { transform: translateY(0); opacity: 1; }
+  }
+
+  /* 下排：时间（宽度与绿色比分框对齐，居中） */
+  .ms-time {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    align-self: center; /* 不拉伸，只占中间比分宽度 */
+    width: 56px; /* 与 .ms-score 同宽 */
+    height: 24px;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    color: #333;
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    overflow: hidden;
+  }
+
+  /* GOAL 进球横幅（宽度与时间条一致，居中） */
+  .ms-goal-overlay {
+    position: absolute;
+    left: 50%;
+    margin-left: -28px; /* 56px 宽的一半，居中定位（不用 transform，避免与动画冲突） */
+    top: 32px; /* 上排高度 */
+    width: 56px; /* 与时间条同宽 */
+    height: 24px; /* 时间条高度 */
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: #ffd700;
+    color: #000;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0;
+    white-space: nowrap;
+  }
+
+  .ms-goal-overlay.show {
+    display: flex;
+    animation: goalDrop 0.6s ease-out;
+  }
+
+  @keyframes goalDrop {
+    from { transform: translateY(-100%); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+
+
+  /* ============================================
+     ⚠️ 以下是测试/演示代码 - 不要直接套到生产项目
+     ============================================ */
+
+  /* 演示用背景 */
+  body {
+    background: linear-gradient(135deg, #1a3a2a 0%, #2a5a3a 50%, #1a3a2a 100%);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* 测试按钮 */
+  .test-btn {
+    position: absolute;
+    bottom: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 10px 24px;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 8px;
+    color: #fff;
+    font-size: 13px;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+  }
+
+  .test-hint {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.3);
+    font-size: 12px;
+  }
+</style>
+</head>
+<body>
+
+  <!-- ★ 核心组件开始 - 复制这段到你的游戏页面 -->
+  <div class="match-scoreboard">
+    <div class="ms-row">
+      <div class="ms-team home">BLUE</div>
+      <div class="ms-score">
+        <span class="ms-score-num" id="score-num">1-0</span>
+      </div>
+      <div class="ms-team away">RED</div>
+    </div>
+    <div class="ms-time">
+      <span id="time-text">13:14</span>
+    </div>
+    <div class="ms-goal-overlay" id="goal-overlay">GOAL</div>
+  </div>
+  <!-- ★ 核心组件结束 -->
+
+
+  <!-- ⚠️ 测试代码 - 不要直接用，仅演示动画效果 -->
+  <button class="test-btn" onclick="demoGoal()">⚽ 测试进球动画</button>
+  <div class="test-hint">演示用 · 正式项目请删除此按钮和相关 JS</div>
+
+  <script>
+    // ⚠️ 测试函数 - 正式项目请删除
+    function demoGoal() {
+      const overlay = document.getElementById('goal-overlay');
+      const scoreNum = document.getElementById('score-num');
+      
+      overlay.classList.add('show');
+      
+      setTimeout(() => {
+        overlay.classList.remove('show');
+        scoreNum.classList.remove('rolling');
+        void scoreNum.offsetWidth;
+        scoreNum.textContent = '2-0';
+        scoreNum.classList.add('rolling');
+      }, 3000);
+    }
+
+    /*
+    // ==========================================
+    // 📌 给下一个开发者的说明：
+    // ==========================================
+    // 1. 核心 UI 结构：上面的 .match-scoreboard 整块
+    // 2. 改队名：改 .ms-team 里的文字
+    // 3. 改比分：改 #score-num 的文字
+    // 4. 改时间：改 #time-text 的文字
+    // 5. 触发 GOAL 动画：给 #goal-overlay 加 .show 类
+    // 6. 比分滚动动画：给 #score-num 加 .rolling 类
+    // 7. 颜色调整：改 .ms-team 的 background 和 ::before/::after 的颜色
+    // ==========================================
+    */
+  </script>
+
+</body>
+</html>

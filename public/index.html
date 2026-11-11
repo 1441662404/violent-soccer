@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+  <link rel="icon" href="data:,">   <!-- 别让浏览器去要 favicon（会 404，污染控制台） -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>FK26 · 暴力足球</title>
+<link rel="stylesheet" href="/css/style.css">
+<script src="/lib/socket.io.js"></script>
+<script src="/js/shared.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "/lib/three.module.js",
+    "three/addons/": "/lib/jsm/",
+    "fflate": "/lib/fflate/esm/browser.js"
+  }
+}
+</script>
+</head>
+<body>
+
+<canvas id="view"></canvas>
+
+<!-- 载入：纯黑底 + FK26 白色斜粗体艺术字（渐隐淡入） -->
+<div id="loading">
+  <div class="fkIntro">
+    <h1 class="fkWord" aria-label="FK26">
+      <span class="fkGlyph" data-k="F">F</span><span class="fkGlyph" data-k="K">K</span><span class="fkGlyph fkNum" data-k="2">2</span><span class="fkGlyph fkNum" data-k="6">6</span>
+    </h1>
+    <div class="fkRule"></div>
+    <p class="fkSub">VIOLENT SOCCER</p>
+  </div>
+  <div class="fkBar"><i id="lbar"></i></div>
+  <p id="ltxt">正在载入…</p>
+</div>
+
+<!-- 开局面板
+     ★ 用户要求：不要左侧品牌名、不要键位提示；
+       两个队做成**居中的两张卡片、队名在卡片下面**。 -->
+<div id="start" hidden>
+  <div class="sBg" aria-hidden="true"></div>
+
+  <!-- 顶部品牌（极小、低调；中间留给球场） -->
+  <div class="sTop">
+    <span class="sTopMark">FK26</span>
+    <span class="sTopSub">VIOLENT SOCCER</span>
+  </div>
+
+  <!-- ★ 用户要求：两个队用**红/蓝球衣的 3D 模型站在两侧**当 UI（点击模型选队，
+       悬停播 Salute、平时播 Happy Idle）。模型由 main.js 的独立 UI 场景渲染，
+       这里只放模型下方的队名标签（可点，和模型等效）。 -->
+  <button type="button" class="sPickTag on" id="tagA" data-team="A">
+    <b>红队</b><em>TEAM RED</em>
+  </button>
+  <button type="button" class="sPickTag" id="tagB" data-team="B">
+    <b>蓝队</b><em>TEAM BLUE</em>
+  </button>
+
+  <!-- 底部一条：只留昵称输入框（**点模型直接进游戏**，不再需要"加入"按钮） -->
+  <p class="sPickHint">点左侧红队 / 右侧蓝队模型即可进入球场</p>
+  <div class="sBar">
+    <input id="nameIn" maxlength="12" placeholder="昵称（可留空自动生成）· 回车也能进" autocomplete="off">
+    <button id="joinBtn" hidden>加入游戏</button>
+  </div>
+</div>
+
+<!-- HUD -->
+<div id="hud" hidden>
+  <!-- 持球时的「虚焦」层：只在左右下角起作用（背板模糊 + 轻微压暗），
+       持球（镜头推近、视野收窄）时淡入，出球后淡出。见 style.css 的 #holdFx -->
+  <div id="holdFx"></div>
+  <!-- 比分栏：scoreboard-component.html 版式
+       （一行三格：[主队名][比分·主题绿][客队名] + 下排居中的计时条 + GOAL 黄牌） -->
+  <div id="score">
+    <div class="match-scoreboard">
+      <div class="ms-row">
+        <div class="ms-team home"><b class="fcName">红队</b></div>
+        <div class="ms-score" id="msScore"><span class="ms-score-num" id="scoreNum">0-0</span></div>
+        <div class="ms-team away"><b class="fcName">蓝队</b></div>
+      </div>
+      <div class="ms-time"><i class="fcLive"></i><b id="clock">5:00</b></div>
+      <div class="ms-goal-overlay" id="msGoal">GOAL</div>
+    </div>
+  </div>
+  <!-- 进球横幅：EA FC 式斜向扫入 → 停住 → 扫出 -->
+  <div id="goalBanner" hidden>
+    <div class="gbClip">
+      <div class="gbTint"></div>
+      <div class="gbBody">
+        <b class="gbWord">GOAL</b>
+        <span class="gbScorer" id="gbScorer"></span>
+        <span class="gbScore"><i id="gbA">0</i><em>–</em><i id="gbB">0</i></span>
+      </div>
+    </div>
+  </div>
+
+  <div id="modeBox"><b id="modeTxt">踢球模式</b><small>Q 切换</small></div>
+  <div id="coinBox" hidden>🪙 <b id="coinTxt">0</b><small>B 商店</small></div>
+  <div id="teamTag">你被分到了 —</div>
+
+  <div id="crosshair"><i></i></div>
+  <div id="hpWrap"><div id="hpFill"></div><span id="hpTxt">100</span></div>
+  <div id="chargeWrap"><div id="chargeBar"></div></div>
+  <div id="speedBox"><b id="speedTxt">0.0</b><small>km/h</small><i id="speedBar"></i></div>
+
+  <div id="ballHint" hidden>按 <b>F</b> 吸附带球</div>
+  <div id="actionHint" hidden></div>
+  <div id="lockTag" hidden>🔒 锁定防守 · 左右侧步</div>
+
+  <!-- ★ 特色功能提示条（屏幕左边缘竖排）：
+       每个特色功能一块**半透明小 UI**，键位名写在这块小 UI 的**右下角**
+       （用户要求："给每个特色功能做个半透明的 ui 在屏幕边提示，小 ui 的右下角还要有个键位名称"）。
+       样式统一在 style.css 末尾的 #featTips 层；不用 JS 生成，改文案只动这里。 -->
+  <div id="featTips" aria-hidden="true">
+    <div class="ft"><b>击球点 · 弧线</b><kbd>←↑↓→ / 侧键</kbd></div>
+    <div class="ft"><b>蓄力射门 · 传球</b><kbd>左键 / 右键</kbd></div>
+    <div class="ft"><b>吸附带球</b><kbd>F</kbd></div>
+    <div class="ft"><b>滑铲</b><kbd>C</kbd></div>
+    <div class="ft"><b>属性卡</b><kbd>1~9</kbd></div>
+    <div class="ft"><b>庆祝语音</b><kbd>中键</kbd></div>
+    <div class="ft"><b>踢球 · 攻击 · 跳舞</b><kbd>Q</kbd></div>
+    <div class="ft"><b>押注商店</b><kbd>B</kbd></div>
+    <div class="ft"><b>切换视角 · 第一人称</b><kbd>V</kbd></div>
+  </div>
+
+  <div id="banner" hidden></div>
+  <div id="killfeed"></div>
+  <div id="net" title="延迟">-- ms</div>
+
+  <!-- ★ 聊天：Enter 打开输入框 → Enter 发送 / Esc 关闭 -->
+  <div id="chatLog"></div>
+  <input id="chatIn" maxlength="80" placeholder="说点什么…（Enter 发送 · Esc 关闭）"
+         autocomplete="off" spellcheck="false" hidden>
+  <!-- 聊天提示（小小的，开始后自动淡出） -->
+  <div id="chatTip"><kbd>Enter</kbd> 聊天</div>
+
+  <!-- 庆祝语音：右下角剩余次数徽章 -->
+  <div id="cheerBadge" hidden title="庆祝语音剩余次数（进球 +1）">
+    <span class="cbIcon">📣</span><b id="cheerNum">0</b>
+  </div>
+
+  <!-- ★ 击球点球（右下角）：圆球 + 红点 = 触球部位。
+       方向键移动红点（移动时方向键不再控制角色），位置保持不自动回中。
+       偏上=电梯球(下坠) · 偏下=后旋(滞空久) · 偏左=顺时针弧线(往右弯) · 偏右=逆时针弧线(往左弯)。
+       正中心吃劲最足，偏点力量略降。物理见 shared.js spinFromSpot / stepBall 的 Magnus 力。 -->
+  <div id="ballCtl" title="击球点（方向键移动红点）">
+    <div class="bcBall">
+      <i class="bcGrid bcGridV"></i><i class="bcGrid bcGridH"></i>
+      <div class="bcDot" id="ballDot"></div>
+    </div>
+    <small id="bcLabel">正中 · 满力</small>
+  </div>
+  <!-- 中键转盘（径向菜单）：8 格布局，后续加语音只改数据 -->
+  <div id="emoteWheel" hidden>
+    <svg id="ewRing" viewBox="0 0 220 220" aria-hidden="true"></svg>
+    <div class="ewCore"><b id="ewNum">0</b><small>松开使用</small></div>
+  </div>
+
+  <div id="help" hidden>
+    <b>操作</b>
+    WASD 移动 · Shift 疾跑 · Ctrl 慢走 · 空格 跳<br>
+    <b>Enter</b> 聊天（Enter 发送 / Esc 关闭）<br>
+    F 吸附带球 · 左键传球 / 右键射门：按住蓄力，松手出球<br>
+    <b>没球时按住左/右键提前蓄力</b>：跑到球上（正前方脚下）自动出脚，跑得越快球速越快<br>
+    <b>方向键 ←↑↓→</b>：移动右下角球 UI 的红点 = 击球部位（偏上电梯球 / 偏下后旋滞空 / 偏左右弧线弯）· 移动后保持<br>
+    <b>鼠标侧键按住 + 移动鼠标</b>：同样调红点（松手立刻回到正常视角控制）· 键盘与侧键互通<br>
+    鼠标上下调射门仰角（看天=高球上吊，看地=贴地球）· C 滑铲 · Q：踢球↔攻击↔跳舞模式<br>
+    B 押注商店：押红队 / 蓝队胜（每局 100，赔率随投注比例实时变化）<br>
+    攻击模式：左键左勾拳 / 右键右直拳（掉血击退，不能传射只能带球）<br>
+    跳舞模式：站着就跳 · 数字键 1~6 选舞（江南 Style / Hip Hop / Hip Hop 2 / Swing / Breakdance / 马竞战舞）<br>
+    <b>中键</b>在踢球模式 = 庆祝语音转盘，在跳舞模式 = 选舞转盘（同一个键，按模式给不同内容）· Esc 解除鼠标锁定<br>
+    <b>V</b> 自由查看视角：**绕着角色转** — 鼠标环视 / 滚轮拉近拉远 / R·F 抬高放低 · 再按 V 退出<br>
+    P 画质档位：高（泛光+转播调色）/ 标准 / 关 · 右上角按钮可切换 触屏 ⇄ 键鼠 操作
+  </div>
+  <div id="lockTip" hidden>点击画面锁定鼠标</div>
+</div>
+
+<button id="setBtn" title="设置">⚙</button>
+<button id="helpBtn" title="操作说明 (H)">?</button>
+<div id="setPanel" hidden>
+  <div class="stHead">设置 <small>（AI 项全服同步）</small></div>
+  <div class="stRow"><span>AI 机器人 <small>场上人机靶子</small></span><button class="stSw" id="swBots" type="button">关</button></div>
+  <div class="stRow"><span>AI 守门员 <small>两侧自动补位</small></span><button class="stSw" id="swKeepers" type="button">关</button></div>
+  <div class="stRow"><span>射门机器人 <small>练习用 · 一直朝球门射</small></span><button class="stSw" id="swShooter" type="button">关</button></div>
+  <div class="stRow"><span>音效 / 解说 <small>只有自己听得到</small></span><button class="stSw" id="swAudio" type="button">关</button></div>
+  <div class="stRow"><span>画面滤镜 <small>V 键同效</small></span><button class="stSw wide" id="swFx" type="button">高</button></div>
+  <div class="stFoot" id="setFoot">机器人设置全服同步 · 当前由 — 控制</div>
+</div>
+<script type="module" src="/js/main.js"></script>
+<script>
+/* 加载出错时把错误直接显示出来，避免"卡在载入"查不到原因 */
+function showErr(msg) {
+  var box = document.getElementById('crash');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'crash';
+    box.style.cssText = 'position:fixed;left:12px;right:12px;bottom:12px;z-index:999;max-height:46vh;overflow:auto;'
+      + 'background:#2a0f14;border:1px solid #ff6b7f;border-radius:10px;padding:14px 16px;'
+      + 'font:12px/1.7 Consolas,monospace;color:#ffb3bd;white-space:pre-wrap;';
+    document.body.appendChild(box);
+  }
+  box.textContent = '出错了：\n' + msg;
+}
+/* 音频资源缺失或解码失败不影响游戏逻辑（对应代码已做容错），
+   但 Web Audio 抛的是 Promise 拒绝，会被全局钩子抓成红色报错条挡住界面。
+   这里识别这类错误并静默处理，只留一条 warn。 */
+const isAudioIssue = (m) => /decode audio|EncodingError|Unable to decode|audio\/cheer/i.test(String(m));
+
+addEventListener('error', (e) => {
+  const msg = (e.message || 'error') + '\n' + (e.filename || '') + ':' + (e.lineno || '');
+  if (isAudioIssue(msg) || isAudioIssue(e.filename)) {
+    console.warn('[audio] 音效缺失或无法解码，已跳过');
+    return;
+  }
+  showErr(msg + (e.error && e.error.stack ? '\n' + e.error.stack : ''));
+});
+addEventListener('unhandledrejection', (e) => {
+  const r = e.reason;
+  const msg = (r && (r.stack || r.message)) || String(r);
+  if (isAudioIssue(msg)) {
+    console.warn('[audio] 音效缺失或无法解码，已跳过');
+    return;
+  }
+  showErr('未捕获的 Promise：\n' + msg);
+});
+</script>
+</body>
+</html>

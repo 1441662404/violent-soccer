@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>英超风格动态计分板 - 多配色版</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'PingFang SC', sans-serif;
+    background: #111;
+    padding: 40px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .title {
+    color: #fff;
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 30px;
+    text-align: center;
+  }
+
+  .board-list {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    align-items: center;
+  }
+
+  /* ========== 英超比分板核心样式 ========== */
+  .pl-scoreboard {
+    display: inline-flex;
+    flex-direction: column;
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  }
+
+  /* 上排：队名 + 比分 */
+  .pl-top {
+    display: flex;
+    align-items: stretch;
+    height: 44px;
+  }
+
+  /* 队名框 */
+  .pl-team {
+    display: flex;
+    align-items: center;
+    padding: 0 18px;
+    font-size: 17px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    color: #fff;
+    position: relative;
+  }
+
+  .pl-team.home {
+    background: #e8382e; /* 主队红 */
+  }
+
+  .pl-team.away {
+    background: #fff; /* 客队白 */
+    color: #111;
+  }
+
+  /* 中间比分区 */
+  .pl-score-area {
+    display: flex;
+    align-items: center;
+    background: #1a1a2e; /* 深色底 */
+    padding: 0 8px;
+  }
+
+  .pl-score-num {
+    font-size: 28px;
+    font-weight: 900;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+    min-width: 28px;
+    text-align: center;
+  }
+
+  .pl-score-num.home { color: #fff; }
+  .pl-score-num.away { color: #fff; }
+
+  /* 中间英超 logo 占位 */
+  .pl-logo {
+    width: 28px;
+    height: 28px;
+    margin: 0 6px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+  }
+
+  /* 下排：时间 */
+  .pl-time {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 26px;
+    background: #2a1a3a; /* 深紫色时间条 */
+    color: #fff;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+
+  /* ========== 不同配色变体 ========== */
+
+  /* 变体1：IPS vs LIV（蓝/红） */
+  .theme-ips-liv .pl-team.home { background: #1a5fb4; }
+  .theme-ips-liv .pl-team.away { background: #e8382e; color: #fff; }
+
+  /* 变体2：MUN vs FUL（红/白） */
+  .theme-mun-ful .pl-team.home { background: #e8382e; }
+  .theme-mun-ful .pl-team.away { background: #fff; color: #111; }
+
+  /* 变体3：WHU vs AVL（酒红/白） */
+  .theme-whu-avl .pl-team.home { background: #7a1a2e; }
+  .theme-whu-avl .pl-team.away { background: #fff; color: #111; }
+
+  /* 变体4：ARS vs WOL（红/黄） */
+  .theme-ars-wol .pl-team.home { background: #e8382e; }
+  .theme-ars-wol .pl-team.away { background: #ffc72c; color: #111; }
+
+  /* 变体5：NEW vs SOU（黑/黄） */
+  .theme-new-sou .pl-team.home { background: #111; }
+  .theme-new-sou .pl-team.away { background: #ffd700; color: #111; }
+
+  /* 自定义说明 */
+  .custom-hint {
+    color: rgba(255,255,255,0.4);
+    font-size: 12px;
+    margin-top: 40px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<div class="title">英超风格动态计分板 · 多配色版</div>
+
+<div class="board-list">
+
+  <!-- 变体1：IPS vs LIV -->
+  <div class="pl-scoreboard theme-ips-liv">
+    <div class="pl-top">
+      <div class="pl-team home">IPS</div>
+      <div class="pl-score-area">
+        <span class="pl-score-num home">0</span>
+        <div class="pl-logo">🦁</div>
+        <span class="pl-score-num away">2</span>
+      </div>
+      <div class="pl-team away">LIV</div>
+    </div>
+    <div class="pl-time">64:55</div>
+  </div>
+
+  <!-- 变体2：MUN vs FUL -->
+  <div class="pl-scoreboard theme-mun-ful">
+    <div class="pl-top">
+      <div class="pl-team home">MUN</div>
+      <div class="pl-score-area">
+        <span class="pl-score-num home">1</span>
+        <div class="pl-logo">🦁</div>
+        <span class="pl-score-num away">0</span>
+      </div>
+      <div class="pl-team away">FUL</div>
+    </div>
+    <div class="pl-time">86:54</div>
+  </div>
+
+  <!-- 变体3：WHU vs AVL -->
+  <div class="pl-scoreboard theme-whu-avl">
+    <div class="pl-top">
+      <div class="pl-team home">WHU</div>
+      <div class="pl-score-area">
+        <span class="pl-score-num home">0</span>
+        <div class="pl-logo">🦁</div>
+        <span class="pl-score-num away">1</span>
+      </div>
+      <div class="pl-team away">AVL</div>
+    </div>
+    <div class="pl-time">03:38</div>
+  </div>
+
+  <!-- 变体4：ARS vs WOL -->
+  <div class="pl-scoreboard theme-ars-wol">
+    <div class="pl-top">
+      <div class="pl-team home">ARS</div>
+      <div class="pl-score-area">
+        <span class="pl-score-num home">2</span>
+        <div class="pl-logo">🦁</div>
+        <span class="pl-score-num away">0</span>
+      </div>
+      <div class="pl-team away">WOL</div>
+    </div>
+    <div class="pl-time">73:15</div>
+  </div>
+
+  <!-- 变体5：NEW vs SOU -->
+  <div class="pl-scoreboard theme-new-sou">
+    <div class="pl-top">
+      <div class="pl-team home">NEW</div>
+      <div class="pl-score-area">
+        <span class="pl-score-num home">1</span>
+        <div class="pl-logo">🦁</div>
+        <span class="pl-score-num away">0</span>
+      </div>
+      <div class="pl-team away">SOU</div>
+    </div>
+    <div class="pl-time">44:19</div>
+  </div>
+
+</div>
+
+<div class="custom-hint">
+  改配色：修改 .pl-team.home 和 .pl-team.away 的 background 颜色即可<br>
+  改队名/比分：直接改文字内容
+</div>
+
+</body>
+</html>

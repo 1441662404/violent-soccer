@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>欧冠比分板 - 极简设计</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'PingFang SC', 'Helvetica Neue', sans-serif;
+    background: #0a0a0f;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* 欧冠深蓝背景 */
+  .champions-bg {
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 0%, #1a1f3a 0%, #0a0a0f 70%);
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    width: 90%;
+    max-width: 900px;
+  }
+
+  /* 赛事标签 */
+  .competition-label {
+    text-align: center;
+    margin-bottom: 40px;
+    font-size: 12px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.4);
+    font-weight: 500;
+  }
+
+  /* 比分板主体 */
+  .scoreboard {
+    background: rgba(255,255,255,0.03);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 24px;
+    padding: 50px 60px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* 球队部分 */
+  .team {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex: 1;
+  }
+
+  .team.right {
+    justify-content: flex-end;
+  }
+
+  .team-crest {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    font-weight: 600;
+  }
+
+  .team-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .team.right .team-info {
+    text-align: right;
+  }
+
+  .team-name {
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+  }
+
+  .team-scorers {
+    font-size: 12px;
+    color: rgba(255,255,255,0.4);
+    line-height: 1.5;
+  }
+
+  /* 中间比分 */
+  .score-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 0 50px;
+  }
+
+  .score-time {
+    font-size: 13px;
+    color: #ffd700;
+    font-weight: 500;
+    letter-spacing: 1px;
+  }
+
+  .score-numbers {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .score-num {
+    font-size: 56px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -2px;
+  }
+
+  .score-sep {
+    font-size: 32px;
+    color: rgba(255,255,255,0.2);
+    font-weight: 300;
+  }
+
+  /* 底部信息条 */
+  .match-info {
+    margin-top: 24px;
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    font-size: 12px;
+    color: rgba(255,255,255,0.3);
+    letter-spacing: 1px;
+  }
+
+  /* 顶部欧冠星 */
+  .star-ball {
+    position: absolute;
+    top: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 40px;
+    height: 40px;
+    opacity: 0.3;
+  }
+</style>
+</head>
+<body>
+
+<div class="champions-bg"></div>
+
+<div class="container">
+  <div class="competition-label">UEFA Champions League · 半决赛次回合</div>
+
+  <div class="scoreboard">
+    <!-- 左队 -->
+    <div class="team">
+      <div class="team-crest">⚪</div>
+      <div class="team-info">
+        <div class="team-name">皇家马德里</div>
+        <div class="team-scorers">
+          21' 姆巴佩<br>
+          45' 贝林厄姆
+        </div>
+      </div>
+    </div>
+
+    <!-- 中间比分 -->
+    <div class="score-center">
+      <div class="score-time">78'</div>
+      <div class="score-numbers">
+        <span class="score-num">2</span>
+        <span class="score-sep">:</span>
+        <span class="score-num">1</span>
+      </div>
+    </div>
+
+    <!-- 右队 -->
+    <div class="team right">
+      <div class="team-info">
+        <div class="team-name">拜仁慕尼黑</div>
+        <div class="team-scorers">
+          63' 凯恩
+        </div>
+      </div>
+      <div class="team-crest">🔴</div>
+    </div>
+  </div>
+
+  <div class="match-info">
+    <span>伯纳乌球场</span>
+    <span>首回合 2 : 2</span>
+    <span>总比分 4 : 3</span>
+  </div>
+</div>
+
+</body>
+</html>

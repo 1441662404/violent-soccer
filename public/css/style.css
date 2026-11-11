@@ -1,0 +1,2114 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #0b1118; }
+body {
+  font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  color: #e9eef5; user-select: none; -webkit-user-select: none;
+}
+canvas#view { display: block; width: 100vw; height: 100vh; }
+
+/* ---------- 全屏遮罩 ---------- */
+#loading, #start {
+  position: fixed; inset: 0; z-index: 50;
+  display: flex; align-items: center; justify-content: center;
+}
+/* 加载页：不需要看球场，保持原来的渐变底（黑场里浮出 FK26 艺术字） */
+#loading { background: radial-gradient(circle at 50% 32%, #12283f 0%, #070e17 72%); }
+/* ★ 开始界面：**必须透明**！用户要求"背景直接斜角实时俯视球场" ——
+ *   这个容器原来是 `radial-gradient(#12283f → #070e17)` 的不透明底，
+ *   会把背后的 3D 球场整块盖死（透出的只有卡片自己那点毛玻璃）。
+ *   现在只留一层很轻的整体压暗（保证白字可读），球场从后面透出来。
+ *   注意：压暗交给 .sBg 那一层做（它在卡片下面、球场上面），这里彻底透明。 */
+#start { background: transparent; }
+#loading[hidden], #start[hidden] { display: none; }
+.panel {
+  width: min(560px, 92vw); padding: 34px 38px; text-align: center;
+  background: linear-gradient(165deg, rgba(16, 32, 50, .9), rgba(7, 14, 24, .94));
+  border: 1px solid rgba(96, 190, 255, .24);
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .6), 0 0 42px rgba(46, 140, 230, .14) inset;
+}
+.panel h1 {
+  font-size: 40px; letter-spacing: 4px; margin-bottom: 6px;
+  background: linear-gradient(90deg, #2b7de0, #5ce1ff, #9fefff);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.panel h1 span {
+  display: block; font-size: 13px; letter-spacing: 8px; color: #6f8093;
+  -webkit-text-fill-color: #6f8093; margin-top: 6px;
+}
+.bar { height: 8px; background: #14243a; border-radius: 6px; margin: 22px 0 10px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, #2b7de0, #5ce1ff); box-shadow: 0 0 14px rgba(92, 225, 255, .5); transition: width .18s; }
+#ltxt { font-size: 13px; color: #8fa3b8; }
+
+#start input {
+  width: 100%; margin: 20px 0 12px; padding: 12px 14px; font-size: 16px;
+  background: #0b1727; border: 1px solid #20384f; border-radius: 10px;
+  color: #e9f4ff; outline: none; text-align: center;
+}
+#start input:focus { border-color: #5ce1ff; box-shadow: 0 0 0 3px rgba(92, 225, 255, .14); }
+#joinBtn {
+  width: 100%; padding: 13px; font-size: 16px; font-weight: 700; cursor: pointer;
+  border: none; border-radius: 10px; color: #04121d;
+  background: linear-gradient(90deg, #7fe9ff, #3fa9f5);
+  box-shadow: 0 10px 26px rgba(63, 169, 245, .35);
+  transition: transform .08s, filter .15s;
+}
+#joinBtn:hover { filter: brightness(1.08); }
+#joinBtn:active { transform: translateY(1px); }
+#joinBtn[disabled] { filter: grayscale(.7); cursor: not-allowed; }
+.keys { margin-top: 18px; font-size: 12.5px; line-height: 2; color: #8fa3b8; }
+.keys b { color: #5ce1ff; font-weight: 700; }
+
+/* ---------- HUD ---------- */
+#hud { position: fixed; inset: 0; z-index: 20; pointer-events: none; }
+#hud[hidden] { display: none; }
+
+/* ============================================================
+ *  EA FC 风格比分牌 + 进球横幅
+ *  设计语言：近黑斜切板 / 斜体压缩大字 / 队色芯片 / 斜向扫光
+ * ============================================================ */
+:root {
+  --fc-font: 'Bahnschrift', 'DIN Alternate', 'Bahnschrift SemiCondensed', 'Arial Narrow',
+             'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --fc-cyan: #5ce1ff;
+  --fc-ink: rgba(8, 11, 17, .93);
+}
+
+/* ============================================================
+ *  比分栏 —— EA FC 26 风格 · 左上角两行
+ *  每队一行：队色竖条 + 队名 + 比分；右下角嵌一个小计时牌
+ * ============================================================ */
+#score {
+  position: absolute; top: 14px; left: 14px;
+  z-index: 12; pointer-events: none;
+  animation: fcDrop .5s cubic-bezier(.2, .95, .25, 1) both;
+}
+@keyframes fcDrop {
+  from { opacity: 0; transform: translateX(-28px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ★★ 比分牌 v2 —— 用户提供的 scoreboard-component.html 版式与配色 ★★
+ *  ★ 配色按用户原组件**原样保留**（紫色队名格 / 主题绿比分 / 白底时间条 / 金色 GOAL）。
+ *    之前擅自套用了项目的"黑白灰约定"把队名格改成半透明黑，是错的 ——
+ *    这是用户专门做的组件，颜色不改（只在**队色竖条**上做功能性调整，见下）。
+ *  结构：[主队名] [比分·主题绿] [客队名] 一行三格，下排居中的计时条，
+ *        进球时计时条位置盖一块 GOAL 黄牌（从上方落下）。 */
+.match-scoreboard {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center;
+  font-family: var(--fc-font);
+  filter: drop-shadow(0 10px 26px rgba(0, 0, 0, .5));
+}
+.ms-row { display: flex; align-items: stretch; height: 32px; }
+
+/* —— 队名格：紫底毛玻璃（用户原配色 rgba(58,26,92,.75)） —— */
+.ms-team {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  width: 70px;
+  background: rgba(58, 26, 92, .75);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  white-space: nowrap; overflow: hidden;
+}
+.ms-team .fcName {
+  font-size: 15px; font-weight: 700; font-style: normal; letter-spacing: 1px;
+  color: #fff; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+/* 主队：左侧竖条 · 客队：右侧竖条。
+ * ⚠️ 用户原组件写死了蓝/红；这里改成**跟随游戏队色**（--team-a / --team-b，
+ *    main.js 从 C.TEAMS 注入）—— 否则红队会配蓝条。改队色仍只需改 shared.js 一处。 */
+.ms-team.home::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+  background: var(--team-a, #6cabdd);
+}
+.ms-team.away::after {
+  content: ''; position: absolute; right: 0; top: 0; bottom: 0; width: 4px;
+  background: var(--team-b, #e03a3a);
+}
+
+/* —— 比分格：主题绿 + 黑字（用户原配色 rgba(0,217,126,.85) / #000） —— */
+.ms-score {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  width: 56px;
+  background: rgba(0, 217, 126, .85);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  color: #000; font-size: 16px; font-weight: 800;
+  font-variant-numeric: tabular-nums; letter-spacing: 1px; overflow: hidden;
+}
+.ms-score-num { display: inline-block; }
+.ms-score-num.rolling { animation: numRoll .4s ease-out; }
+@keyframes numRoll {
+  from { transform: translateY(-100%); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+.ms-score.hit { animation: msScoreHit .7s cubic-bezier(.2, .9, .3, 1); }
+@keyframes msScoreHit { 22% { transform: scale(1.2); filter: brightness(1.4); } }
+
+/* —— 计时条：白底深字，与比分格同宽、居中（用户原配色 rgba(255,255,255,.85) / #333） —— */
+.ms-time {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  width: 56px; height: 24px;
+  background: rgba(255, 255, 255, .85);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  color: #333; font-size: 13px; font-weight: 800; letter-spacing: 1px;
+  font-variant-numeric: tabular-nums;
+}
+#clock { font-style: normal; }
+.ms-time .fcLive {
+  width: 5px; height: 5px; border-radius: 50%; background: #e0293a; font-style: normal;
+  animation: fcBlink 1.2s infinite;
+}
+@keyframes fcBlink { 50% { opacity: .25; } }
+
+/* —— GOAL 黄牌：盖在计时条位置，从上方落下（用户原配色 #ffd700） —— */
+.ms-goal-overlay {
+  position: absolute; left: 50%; margin-left: -28px; top: 32px;
+  width: 56px; height: 24px;
+  display: none; align-items: center; justify-content: center;
+  background: #ffd700; color: #000;
+  font-size: 12px; font-weight: 900; letter-spacing: 0;
+}
+.ms-goal-overlay.show { display: flex; animation: goalDrop .6s ease-out; }
+@keyframes goalDrop {
+  from { transform: translateY(-120%); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+
+/* —— 进球横幅 —— */
+#goalBanner {
+  position: fixed; left: 0; right: 0; bottom: 22%; z-index: 78; pointer-events: none;
+  font-family: var(--fc-font);
+}
+#goalBanner.on { animation: gbRun 3.9s cubic-bezier(.2, .9, .25, 1) forwards; }
+@keyframes gbRun {
+  0%   { transform: translateX(-118%) skewX(-13deg); opacity: 0; }
+  13%  { transform: translateX(0) skewX(-13deg); opacity: 1; }
+  76%  { transform: translateX(0) skewX(-13deg); opacity: 1; }
+  100% { transform: translateX(118%) skewX(-13deg); opacity: 1; }
+}
+.gbClip {
+  position: relative; overflow: hidden;
+  padding: 12px 0 13px;
+  background: linear-gradient(180deg, rgba(20, 25, 33, .94), rgba(6, 9, 14, .95));
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .62);
+}
+.gbClip::before, .gbClip::after {
+  content: ''; position: absolute; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .55), transparent);
+}
+.gbClip::before { top: 0; } .gbClip::after { bottom: 0; }
+.gbTint {                       /* 队色斜条 */
+  position: absolute; inset: 0; opacity: .5;
+  background: linear-gradient(100deg, transparent 6%, var(--gb, #5ce1ff) 34%, transparent 68%);
+}
+.gbBody {
+  position: relative; display: flex; align-items: center; justify-content: center;
+  gap: 26px; transform: skewX(13deg);
+}
+.gbWord {
+  font-size: 52px; font-weight: 700; font-style: italic; letter-spacing: 8px; color: #fff;
+  text-shadow: 0 0 26px rgba(255, 255, 255, .5), 0 4px 12px rgba(0, 0, 0, .6);
+}
+.gbScorer { font-size: 21px; font-weight: 700; font-style: italic; color: #dff3ff; letter-spacing: 2px; }
+.gbScore {
+  display: flex; align-items: center; gap: 10px; padding-left: 22px;
+  border-left: 2px solid rgba(255, 255, 255, .35);
+  font-size: 40px; font-weight: 700; font-style: italic; color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+.gbScore em { font-style: normal; color: rgba(255, 255, 255, .55); font-size: 26px; }
+
+#modeBox {
+  position: absolute; top: 16px; right: 16px; padding: 9px 14px; border-radius: 12px;
+  background: rgba(8, 17, 29, .68); border: 1px solid rgba(140, 180, 220, .18); text-align: right;
+}
+#modeBox b { display: block; font-size: 16px; color: #5ce1ff; }
+#modeBox b.attack { color: #ff6b7f; }
+#modeBox b.dance { color: #b58cff; }
+#modeBox small { font-size: 11px; color: #7d90a4; }
+
+#teamTag {
+  position: absolute; top: 92px; right: 16px; font-size: 12.5px;
+  padding: 6px 12px; border-radius: 10px;
+  background: rgba(8, 17, 29, .6); border: 1px solid rgba(140, 180, 220, .16);
+}
+
+#crosshair {
+  position: absolute; left: 50%; top: 50%; width: 22px; height: 22px;
+  transform: translate(-50%, -50%);
+}
+#crosshair::before, #crosshair::after {
+  content: ''; position: absolute; background: rgba(255, 255, 255, .8);
+  box-shadow: 0 0 3px rgba(0, 0, 0, .9);
+}
+#crosshair::before { left: 50%; top: 0; width: 1.5px; height: 100%; margin-left: -.75px; }
+#crosshair::after { top: 50%; left: 0; height: 1.5px; width: 100%; margin-top: -.75px; }
+#crosshair i {
+  position: absolute; inset: 6px; border: 1.5px solid rgba(92, 225, 255, .95); border-radius: 50%;
+}
+
+#chargeWrap {
+  position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%);
+  width: 190px; height: 9px; border-radius: 6px; overflow: hidden;
+  background: rgba(8, 14, 22, .7); border: 1px solid rgba(140, 180, 220, .2);
+  opacity: 0; transition: opacity .12s;
+}
+#chargeWrap.on { opacity: 1; }
+
+/* 自己的血条（HUD 底部） */
+#hpWrap {
+  position: absolute; left: 50%; bottom: 104px; transform: translateX(-50%);
+  width: 190px; height: 12px; border-radius: 6px; overflow: hidden;
+  background: rgba(8, 14, 22, .7); border: 1px solid rgba(140, 180, 220, .25);
+}
+#hpFill {
+  height: 100%; width: 100%;
+  background: linear-gradient(90deg, #6ee7a8, #4dd0e1);
+  transition: width .15s, background .15s;
+}
+#hpTxt {
+  position: absolute; left: 50%; bottom: 15px; transform: translateX(-50%);
+  font-size: 11px; letter-spacing: 2px; color: #cfe0f5; text-shadow: 0 1px 3px #000;
+}
+/* 力度条配色：传球=绿，射门=金红 */
+#chargeBar { height: 100%; width: 0%; background: linear-gradient(90deg, #6ee7a8, #4dd0e1, #5ce1ff); }
+#chargeWrap.shoot #chargeBar { background: linear-gradient(90deg, #5ce1ff, #2fb3e8, #ff5a5a); }
+#chargeWrap::after {
+  content: attr(data-label);
+  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+  font-size: 12px; letter-spacing: 2px; color: #cfe0f5; white-space: nowrap;
+  text-shadow: 0 1px 3px #000;
+}
+#chargeWrap.shoot::after { color: #cdeeff; }
+
+#ballHint {
+  position: absolute; left: 50%; bottom: 118px; transform: translateX(-50%);
+  font-size: 14px; padding: 7px 16px; border-radius: 20px;
+  background: rgba(92, 225, 255, .16); border: 1px solid rgba(92, 225, 255, .5);
+  color: #5ce1ff; animation: pulse 1.2s infinite;
+}
+#ballHint[hidden] { display: none; }
+@keyframes pulse { 0%, 100% { opacity: .65 } 50% { opacity: 1 } }
+
+#banner {
+  position: absolute; left: 50%; top: 34%; transform: translate(-50%, -50%);
+  font-size: 62px; font-weight: 900; letter-spacing: 4px; text-align: center;
+  text-shadow: 0 6px 26px rgba(0, 0, 0, .8); animation: pop .45s ease-out;
+}
+#banner[hidden] { display: none; }
+@keyframes pop { from { transform: translate(-50%, -50%) scale(.4); opacity: 0 } to { transform: translate(-50%, -50%) scale(1); opacity: 1 } }
+
+#killfeed {
+  position: absolute; left: 16px; top: 16px; width: 300px;
+  font-size: 12.5px; line-height: 1.9;
+}
+#killfeed div {
+  padding: 4px 10px; margin-bottom: 4px; border-radius: 8px;
+  background: rgba(8, 17, 29, .6); border-left: 3px solid #5ce1ff;
+}
+
+#net {
+  position: absolute; left: 16px; bottom: 14px; font-size: 12px; color: #8fa3b8;
+  padding: 5px 10px; border-radius: 8px; background: rgba(8, 17, 29, .55);
+}
+
+#help {
+  position: absolute; right: 16px; bottom: 14px; font-size: 12px; line-height: 1.85;
+  color: #93a6ba; text-align: right; background: rgba(8, 17, 29, .5);
+  padding: 9px 13px; border-radius: 10px;
+}
+#help b { color: #5ce1ff; }
+
+#lockTip {
+  position: absolute; left: 50%; top: 58%; transform: translateX(-50%);
+  font-size: 15px; padding: 10px 22px; border-radius: 24px; color: #06131d;
+  background: #5ce1ff; font-weight: 700;
+}
+#lockTip[hidden] { display: none; }
+
+/* ============================================================
+ *  触屏控制层（touch.js 生成，仅触屏设备显示）
+ * ============================================================ */
+html, body { touch-action: none; overscroll-behavior: none; }
+body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+
+#touch { position: fixed; inset: 0; z-index: 40; pointer-events: none; }
+#touch .tz { position: absolute; top: 0; bottom: 0; pointer-events: auto; }
+#touch .tzL { left: 0; width: 45%; }
+#touch .tzR { right: 0; width: 55%; }
+
+/* 虚拟摇杆：触摸点即为中心 */
+#tstick {
+  position: absolute; width: 104px; height: 104px; margin: -52px 0 0 -52px;
+  border-radius: 50%; border: 2px solid rgba(255, 255, 255, .28);
+  background: rgba(8, 17, 29, .30); display: none; pointer-events: none;
+}
+#tstick.on { display: block; }
+#tknob {
+  position: absolute; left: 50%; top: 50%; width: 48px; height: 48px;
+  margin: -24px 0 0 -24px; border-radius: 50%;
+  background: rgba(92, 225, 255, .75); border: 2px solid rgba(255, 255, 255, .5);
+}
+
+/* 左上系统按钮：模式 / 慢走 */
+#tsys { position: absolute; left: calc(14px + env(safe-area-inset-left)); top: calc(64px + env(safe-area-inset-top)); display: flex; gap: 10px; pointer-events: auto; }
+
+/* 右下动作按钮组（按模式显隐） */
+#tbtns { position: absolute; right: calc(14px + env(safe-area-inset-right)); bottom: calc(20px + env(safe-area-inset-bottom)); pointer-events: auto; }
+#tbtns .tgrp { display: none; }
+#tbtns .tgrp.on { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: flex-end; gap: 10px; width: min(46vw, 240px); }
+
+.tbtn {
+  width: 62px; height: 62px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .35);
+  background: rgba(16, 26, 40, .55); color: #e8eef5; font-size: 15px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  touch-action: none; -webkit-tap-highlight-color: transparent; padding: 0;
+}
+.tbtn.big { width: 78px; height: 78px; font-size: 17px; }
+.tbtn.on, .tbtn:active { background: rgba(92, 225, 255, .8); color: #06131d; border-color: #fff; }
+.tbtn.pass  { background: rgba(46, 160, 92, .55); }
+.tbtn.shoot { background: rgba(200, 60, 60, .6); }
+.tbtn.punch { background: rgba(150, 60, 170, .55); }
+.tbtn.num   { width: 52px; height: 52px; font-size: 19px; }
+.tbtn.sys   { width: 54px; height: 54px; font-size: 13px; background: rgba(16, 26, 40, .45); }
+
+/* 横屏：按钮更大、布局更舒展 */
+@media (orientation: landscape) and (max-height: 560px) {
+  #tbtns { bottom: calc(12px + env(safe-area-inset-bottom)); }
+  #tbtns .tgrp { width: min(52vw, 320px); gap: 12px; }
+  .tbtn { width: 68px; height: 68px; font-size: 16px; }
+  .tbtn.big { width: 86px; height: 86px; font-size: 18px; }
+  .tbtn.num { width: 58px; height: 58px; }
+  #tsys { top: calc(52px + env(safe-area-inset-top)); }
+}
+/* 窄屏竖屏：按钮略收 */
+@media (orientation: portrait) and (max-width: 380px) {
+  .tbtn { width: 56px; height: 56px; font-size: 14px; }
+  .tbtn.big { width: 70px; height: 70px; }
+  .tbtn.num { width: 46px; height: 46px; }
+}
+
+/* 触屏设备：藏起桌面键位提示（避免和按钮重叠） */
+body.touch #help { display: none; }
+body.touch #ballHint { bottom: 110px; }
+
+/* 跳舞模式 9 个舞段：固定 3×3 紧凑网格，按 1→9 顺序排满，不留空位 */
+#tbtns .tgrp[data-mode="dance"].on {
+  display: grid; grid-template-columns: repeat(3, max-content);
+  gap: 8px; justify-content: end; align-content: end;
+}
+
+/* 竖屏提示条：横屏后自动消失（JS 控制 hidden） */
+#rotTip { position: fixed; left: calc(10px + env(safe-area-inset-left)); right: calc(104px + env(safe-area-inset-right)); top: calc(8px + env(safe-area-inset-top)); z-index: 60; }
+#rotTip[hidden] { display: none; }
+.rotBox {
+  display: flex; align-items: center; gap: 10px; padding: 9px 10px 9px 12px;
+  background: rgba(8, 17, 29, .82); border: 1px solid rgba(92, 225, 255, .5);
+  border-radius: 14px; box-shadow: 0 6px 22px rgba(0, 0, 0, .45);
+}
+.rotIcon {
+  width: 22px; height: 34px; flex: none; border: 2px solid #5ce1ff; border-radius: 4px;
+  position: relative; animation: rotHint 2.2s ease-in-out infinite;
+}
+.rotIcon::after { content: ''; position: absolute; left: 50%; bottom: 3px; width: 10px; height: 2px; transform: translateX(-50%); background: #5ce1ff; border-radius: 2px; }
+@keyframes rotHint {
+  0%, 40% { transform: rotate(0deg); }
+  60%, 92% { transform: rotate(-90deg); }
+  100% { transform: rotate(0deg); }
+}
+.rotTxt { flex: 1; min-width: 0; line-height: 1.35; }
+.rotTxt b { display: block; font-size: 14px; color: #5ce1ff; }
+.rotTxt small { font-size: 11px; color: #93a6ba; }
+#rotGo {
+  flex: none; padding: 8px 12px; border-radius: 10px; border: 0; font-size: 13px; font-weight: 700;
+  background: #5ce1ff; color: #06131d;
+}
+#rotX {
+  flex: none; width: 30px; height: 30px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, .3);
+  background: rgba(255, 255, 255, .08); color: #cfd9e4; font-size: 13px;
+}
+
+/* 竖屏提示条不拦截游戏触摸（只有按钮可点），并把左上按钮区下移让位 */
+#rotTip { pointer-events: none; }
+#rotTip button { pointer-events: auto; }
+#tsys { top: calc(104px + env(safe-area-inset-top)); }
+@media (orientation: landscape) and (max-height: 560px) {
+  #tsys { top: calc(56px + env(safe-area-inset-top)); }
+}
+
+/* 键鼠 ⇄ 触屏 操作方案切换（底部中央，两边都不占地方） */
+#modeSwitch {
+  position: fixed; right: calc(10px + env(safe-area-inset-right));
+  top: calc(8px + env(safe-area-inset-top)); z-index: 80;
+  padding: 7px 12px; border-radius: 20px; font-size: 12px; font-weight: 700;
+  background: rgba(8, 17, 29, .6); color: #cfd9e4; border: 1px solid rgba(96, 190, 255, .28);
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent; white-space: nowrap;
+}
+#modeSwitch:active { background: rgba(92, 225, 255, .8); color: #06131d; }
+#modeSwitch.toTouch { border-color: rgba(110, 231, 168, .5); color: #6ee7a8; }
+#modeSwitch.toDesktop { border-color: rgba(92, 225, 255, .5); color: #5ce1ff; }
+@media (orientation: landscape) and (max-height: 560px) {
+  #modeSwitch { padding: 5px 11px; font-size: 11px; }
+}
+
+
+/* 发球提示（轮到你发界外球 / 角球 / 球门球） */
+#actionHint {
+  position: absolute; left: 50%; bottom: 118px; transform: translateX(-50%);
+  padding: 9px 18px; border-radius: 22px; font-size: 14px; font-weight: 700;
+  background: rgba(8, 17, 29, .8); color: #5ce1ff;
+  border: 1px solid rgba(92, 225, 255, .55); white-space: nowrap;
+}
+#actionHint[hidden] { display: none; }
+
+/* 音效开关（右上角，和模式切换按钮并排） */
+
+/* 锁定防守标签 */
+#lockTag {
+  position: absolute; left: 50%; top: 12px; transform: translateX(-50%);
+  padding: 5px 14px; border-radius: 16px; font-size: 12px; font-weight: 700;
+  background: rgba(8, 17, 29, .72); color: #6ee7a8; border: 1px solid rgba(110, 231, 168, .5);
+}
+#lockTag[hidden] { display: none; }
+
+/* ============================================================
+ *  属性卡（FUT 风格）+ 卡牌物品栏
+ * ============================================================ */
+#cardBar {
+  position: fixed; left: calc(12px + env(safe-area-inset-left));
+  bottom: calc(14px + env(safe-area-inset-bottom)); display: flex; gap: 10px; z-index: 55;
+}
+.cardSlot { position: relative; width: 76px; height: 106px; cursor: pointer; transition: transform .18s ease, filter .3s; }
+.cardSlot:hover { transform: translateY(-5px) scale(1.05); }
+.cardSlot.spent { filter: grayscale(1) brightness(.45); cursor: default; }
+.cardSlot.using { animation: cardPop .9s ease; }
+.cardKey {
+  position: absolute; right: -5px; top: -6px; width: 18px; height: 18px; border-radius: 50%;
+  background: #5ce1ff; color: #06131d; font-size: 11px; font-weight: 800;
+  display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,.5);
+}
+@keyframes cardPop {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.22) translateY(-10px); filter: brightness(1.6); }
+  100% { transform: scale(1); }
+}
+
+/* ---- 卡面 ---- */
+.futCard {
+  position: absolute; inset: 0; border-radius: 9px; overflow: hidden;
+  background: linear-gradient(160deg, #24365c 0%, #101a2b 50%, #1a2740 100%);
+  border: 2px solid #9ed8ff;
+  box-shadow: 0 6px 16px rgba(0,0,0,.55), inset 0 0 16px rgba(150, 216, 255,.18);
+  color: #eaf1fa; font-family: inherit;
+}
+.futGlow { position: absolute; inset: -30%; background: radial-gradient(circle at 50% 35%, rgba(150, 216, 255,.28), transparent 62%); pointer-events: none; }
+.futTop { position: absolute; top: 3px; left: 5px; right: 5px; height: 28px; }
+.futRating { position: absolute; left: 0; top: 0; text-align: center; line-height: 1; }
+.futRating b { display: block; font-size: 19px; font-weight: 900; letter-spacing: -.5px; }
+.futRating span { font-size: 8px; font-weight: 700; color: #cfd9e4; }
+.futLeague { position: absolute; left: 0; right: 0; top: 1px; text-align: center; font-size: 8px; font-weight: 800; color: #9ed8ff; letter-spacing: 1px; }
+.futAlts { position: absolute; right: 0; top: 0; display: flex; flex-direction: column; gap: 1px; align-items: flex-end; }
+.futAlts i { font-style: normal; font-size: 7px; font-weight: 700; padding: 0 4px; border-radius: 6px; background: rgba(255,255,255,.16); }
+.futFig { position: absolute; top: 28px; left: 0; right: 0; height: 40px; opacity: .95; }
+.futFig svg { width: 100%; height: 100%; }
+.futBottom { position: absolute; left: 4px; right: 4px; bottom: 3px; }
+.futName {
+  text-align: center; font-size: 10px; font-weight: 900; letter-spacing: .3px;
+  border-bottom: 1px solid rgba(150, 216, 255,.45); margin-bottom: 2px; white-space: nowrap; overflow: hidden;
+}
+.futStats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 3px; margin-bottom: 1px; }
+.futStats span { display: flex; justify-content: space-between; font-size: 7.5px; line-height: 1.25; }
+.futStats i { font-style: normal; color: #b9c6d6; }
+.futStats b { font-weight: 800; }
+.futFoot { display: flex; justify-content: space-between; font-size: 6.5px; color: #9fb0c4; }
+.futBadges { position: absolute; right: 3px; bottom: 22px; display: flex; flex-direction: column; gap: 2px; align-items: flex-end; }
+.futBadges i { font-style: normal; font-size: 6.5px; font-weight: 700; background: rgba(255,255,255,.14); border-radius: 5px; padding: 0 3px; }
+
+/* 使用瞬间：卡牌飞到屏幕中央放大 */
+.futFly {
+  position: fixed; left: 50%; top: 46%; width: 150px; height: 210px; margin: -105px 0 0 -75px;
+  z-index: 90; pointer-events: none; animation: futFly 1.25s cubic-bezier(.2,.8,.25,1) forwards;
+  box-shadow: 0 0 60px rgba(150, 216, 255,.75), 0 20px 60px rgba(0,0,0,.6);
+}
+@keyframes futFly {
+  0% { opacity: 0; transform: scale(.4) rotate(-8deg); }
+  25% { opacity: 1; transform: scale(1.05) rotate(0deg); }
+  60% { opacity: 1; transform: scale(1.12); }
+  100% { opacity: 0; transform: scale(1.5) translateY(-70px); }
+}
+
+/* 加速倒计时 */
+#boostHud {
+  position: fixed; left: 50%; top: calc(48px + env(safe-area-inset-top)); transform: translateX(-50%);
+  z-index: 60; padding: 5px 14px; border-radius: 16px; font-size: 12px; font-weight: 700;
+  background: rgba(8, 17, 29, .78); color: #5ce1ff; border: 1px solid rgba(92, 225, 255, .5);
+}
+#boostHud[hidden] { display: none; }
+#boostHud b { color: #6ee7a8; }
+#boostHud.flash { animation: boostFlash .9s ease; }
+@keyframes boostFlash {
+  0% { transform: translateX(-50%) scale(.8); box-shadow: 0 0 0 rgba(255,209,102,0); }
+  40% { transform: translateX(-50%) scale(1.14); box-shadow: 0 0 26px rgba(255,209,102,.85); }
+  100% { transform: translateX(-50%) scale(1); }
+}
+/* 手机上物品栏缩小一点，别挡住摇杆 */
+body.touch #cardBar { bottom: calc(96px + env(safe-area-inset-bottom)); left: calc(10px + env(safe-area-inset-left)); }
+body.touch .cardSlot { width: 58px; height: 82px; }
+
+/* AI 守门员开关（右上角，和音效按钮竖排） */
+/* 设置按钮 + 面板 */
+#setBtn {
+  position: fixed; right: calc(10px + env(safe-area-inset-right));
+  top: calc(92px + env(safe-area-inset-top)); z-index: 86;
+  width: 34px; height: 34px; border-radius: 50%; font-size: 16px; line-height: 1;
+  background: rgba(8, 17, 29, .6); color: #cfd9e4; border: 1px solid rgba(255, 255, 255, .22);
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+#setBtn:hover { color: #fff; border-color: rgba(255, 255, 255, .45); }
+#setPanel {
+  position: fixed; right: calc(10px + env(safe-area-inset-right));
+  top: calc(134px + env(safe-area-inset-top)); z-index: 95; width: 252px;
+  padding: 12px 14px 10px; border-radius: 13px;
+  background: rgba(9, 14, 21, .94); border: 1px solid rgba(140, 180, 220, .24);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .55);
+  color: #dbe6f2; font-size: 13px; backdrop-filter: blur(8px);
+}
+#setPanel[hidden] { display: none; }
+.stHead { font-size: 14px; font-weight: 800; margin-bottom: 6px; letter-spacing: 1px; }
+.stHead small { font-size: 10.5px; font-weight: 500; color: #7d90a4; letter-spacing: 0; }
+.stRow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-top: 1px solid rgba(140, 180, 220, .12); }
+.stRow > span { display: flex; flex-direction: column; line-height: 1.35; }
+.stRow small { color: #7d90a4; font-size: 10.5px; }
+.stSw {
+  flex: 0 0 auto; min-width: 58px; padding: 6px 8px; border-radius: 8px; cursor: pointer;
+  background: #16273a; color: #8fb2cf; border: 1px solid rgba(96, 190, 255, .18);
+  font-size: 12px; font-weight: 800; font-family: inherit;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.stSw.wide { min-width: 74px; }
+.stSw.on { background: linear-gradient(#12a4c4, #0b6f8c); color: #dffbff; border-color: rgba(92, 225, 255, .6); box-shadow: 0 0 12px rgba(92, 225, 255, .3); }
+.stFoot { margin-top: 8px; font-size: 10.5px; color: #7d90a4; line-height: 1.6; }
+
+/* 转播感暗角（沉浸感） */
+
+/* ============================================================
+ *  ★ 持球虚焦（用户要求："持球的时候视角不是放大、视野变小吗，
+ *     持球的时候屏幕左下角和右下角做一点虚焦效果"）
+ *  做法：一个铺满屏幕的层做 backdrop-filter: blur()，再用 mask 把
+ *  左右下角的圆形区域"抠"出来 —— 只有两个角真的糊，中间(球场主体)完全不受影响。
+ *  只用一个层 = 只有一个 backdrop 采样层，比两个角各一个层省一半 GPU。
+ *  持球时（input.js 的 holdFx 起效）加 .on 淡入。
+ * ============================================================ */
+#holdFx {
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  /* ★ z-index 必须是 0（不能是 1）：它是 #hud 的第一个子元素，
+   *   兄弟元素（比分栏/血条/提示条）都没设 z-index(=auto)。给 0 时按 DOM 顺序
+   *   先画 #holdFx、后画兄弟 → 虚焦层压在球场之上、HUD 之下，不会遮住比分栏。
+   *   （踩过：写 z-index:1 会把整个 HUD 压暗糊掉。） */
+  opacity: 0; transition: opacity .55s cubic-bezier(.4, 0, .2, 1);
+  /* 左下角 + 右下角两块圆形遮罩（其余区域蒙版为 0 → 不会模糊） */
+  --hfMask:
+    radial-gradient(42% 46% at 0% 108%, #000 0%, rgba(0,0,0,.72) 40%, rgba(0,0,0,.22) 66%, transparent 82%),
+    radial-gradient(42% 46% at 100% 108%, #000 0%, rgba(0,0,0,.72) 40%, rgba(0,0,0,.22) 66%, transparent 82%);
+  -webkit-mask-image: var(--hfMask); mask-image: var(--hfMask);
+  backdrop-filter: blur(9px) saturate(.82) brightness(.9);
+  -webkit-backdrop-filter: blur(9px) saturate(.82) brightness(.9);
+}
+#holdFx.on { opacity: 1; }
+/* 不支持 backdrop-filter 的浏览器：退化成角部压暗的暗角（仍有"视野收窄"的感觉） */
+@supports not ((backdrop-filter: blur(2px)) or (-webkit-backdrop-filter: blur(2px))) {
+  #holdFx {
+    background:
+      radial-gradient(42% 46% at 0% 108%, rgba(4,8,14,.62) 0%, transparent 80%),
+      radial-gradient(42% 46% at 100% 108%, rgba(4,8,14,.62) 0%, transparent 80%);
+  }
+}
+/* 触屏/低画质档位关掉模糊（省电），只留暗角 */
+body.lowfx #holdFx {
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+  background:
+    radial-gradient(42% 46% at 0% 108%, rgba(4,8,14,.5) 0%, transparent 80%),
+    radial-gradient(42% 46% at 100% 108%, rgba(4,8,14,.5) 0%, transparent 80%);
+}
+
+/* ============================================================
+ *  攻击模式技能卡（无限使用 · 各自冷却）
+ * ============================================================ */
+.cardSlot.skillSlot { width: 84px; height: 104px; }
+.skillCard {
+  position: absolute; inset: 0; border-radius: 10px; overflow: hidden;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  background: linear-gradient(165deg, #3a2140 0%, #1a1226 55%, #2a1a38 100%);
+  border: 2px solid #a78bfa;
+  box-shadow: 0 6px 16px rgba(0,0,0,.55), inset 0 0 18px rgba(255,138,76,.22);
+}
+.skillIcon { font-size: 30px; line-height: 1; filter: drop-shadow(0 2px 4px rgba(0,0,0,.6)); }
+.skillName { font-size: 13px; font-weight: 800; color: #cdeeff; letter-spacing: .5px; }
+.skillHint { font-size: 10px; color: #b9a6ff; opacity: .9; }
+.skillCdMask {
+  position: absolute; inset: 0; border-radius: 10px; display: none;
+  align-items: center; justify-content: center;
+  background: rgba(6,8,14,.72); backdrop-filter: blur(1px);
+}
+.skillCdMask b { font-size: 22px; font-weight: 900; color: #fff; }
+.cardSlot.cooling .skillCard { filter: grayscale(.6) brightness(.6); }
+.cardSlot.cooling { cursor: default; }
+.cardSlot.cooling:hover { transform: none; }
+/* 需要持球的花式卡（马赛回旋）：脚下没球时置灰，并在卡面上提示"需持球"。
+ * ★ 只是**视觉提示**，真正的拒绝在服务端（trySkill 返回 noball，不扣 CD）。 */
+.skillNeed {
+  position: absolute; left: 0; right: 0; bottom: 4px;
+  font-size: 9px; font-weight: 800; letter-spacing: .5px; color: #ffd76a;
+  text-align: center; text-shadow: 0 1px 3px rgba(0,0,0,.8);
+  opacity: 0; transition: opacity .12s;
+}
+.cardSlot.needBall .skillNeed { opacity: 1; }
+.cardSlot.needBall .skillCard { filter: grayscale(.85) brightness(.55); border-color: rgba(150,150,170,.55); }
+.cardSlot.needBall { cursor: default; }
+.cardSlot.needBall:hover { transform: none; }
+body.touch .cardSlot.skillSlot { width: 64px; height: 80px; }
+body.touch .skillIcon { font-size: 22px; }
+body.touch .skillName { font-size: 11px; }
+
+/* ============================================================
+ *  载入界面 —— FK26 风格（纯黑底 + 白色斜粗体艺术字，渐隐淡入）
+ *  参考 EA FC 的开场：没有花哨卡片，黑场里只有标志字慢慢浮出来。
+ * ============================================================ */
+#loading {
+  position: fixed; inset: 0; z-index: 50;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: #000;
+  overflow: hidden;
+}
+#loading[hidden] { display: none; }
+
+/* 极淡的一束顶光，避免纯黑发死 */
+#loading::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse 70% 46% at 50% 42%, rgba(255,255,255,.055), transparent 70%);
+}
+
+.fkIntro { position: relative; text-align: center; animation: fkIn 1.15s cubic-bezier(.16,.9,.28,1) both; }
+@keyframes fkIn {
+  0%   { opacity: 0; transform: scale(1.06); letter-spacing: .22em; filter: blur(14px); }
+  60%  { opacity: 1; filter: blur(0); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* —— 主标志字：白色 · 超粗 · 斜体 · 紧字距（FC 的招牌观感） —— */
+.fkWord {
+  margin: 0;
+  display: flex; align-items: baseline; justify-content: center;
+  font-family: "Archivo Black", "Arial Black", Impact, "Haettenschweiler", "Microsoft YaHei", sans-serif;
+  font-size: clamp(66px, 17vw, 168px);
+  font-weight: 900; font-style: italic;
+  line-height: .86; letter-spacing: -.035em;
+  color: #fff;
+  /* 轻微斜向高光，像被灯打到的金属字 */
+  background: linear-gradient(168deg, #ffffff 22%, #f4f7fa 46%, #cfd6de 74%, #ffffff 100%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 6px 40px rgba(255,255,255,.13);
+  /* 逐个字母渐隐浮出 */
+}
+.fkGlyph {
+  display: inline-block;
+  opacity: 0; transform: translateY(.16em) scale(1.1);
+  animation: fkGlyphIn .95s cubic-bezier(.18,.92,.24,1) forwards;
+}
+.fkGlyph[data-k="F"] { animation-delay: .10s; }
+.fkGlyph[data-k="K"] { animation-delay: .24s; }
+.fkGlyph[data-k="2"] { animation-delay: .38s; }
+.fkGlyph[data-k="6"] { animation-delay: .52s; }
+@keyframes fkGlyphIn {
+  0%   { opacity: 0; transform: translateY(.16em) scale(1.1); filter: blur(10px); }
+  55%  { opacity: 1; filter: blur(0); }
+  100% { opacity: 1; transform: none; }
+}
+
+/* K 之后那道斜切细线 —— FC 常见的小装饰 */
+.fkRule {
+  width: 0; height: 2px; margin: 22px auto 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.9) 22%, rgba(255,255,255,.9) 78%, transparent);
+  animation: fkRule 1.1s cubic-bezier(.16,.9,.28,1) .74s forwards;
+}
+@keyframes fkRule { to { width: min(280px, 62vw); } }
+
+.fkSub {
+  margin: 14px 0 0; opacity: 0;
+  font-size: 12px; font-weight: 600; font-style: italic;
+  letter-spacing: .58em; text-indent: .58em; color: #8b96a3;
+  animation: fkFade .9s ease .9s forwards;
+}
+@keyframes fkFade { to { opacity: 1; } }
+
+/* —— 进度：一条极细的白线，只在它自己那一小段发光 —— */
+.fkBar {
+  position: absolute; left: 50%; bottom: 15%; transform: translateX(-50%);
+  width: min(340px, 68vw); height: 2px;
+  background: rgba(255,255,255,.11); overflow: hidden;
+}
+.fkBar i {
+  display: block; height: 100%; width: 0%;
+  background: linear-gradient(90deg, rgba(255,255,255,.5), #fff);
+  box-shadow: 0 0 14px rgba(255,255,255,.75);
+  transition: width .22s ease;
+}
+#ltxt {
+  position: absolute; left: 0; right: 0; bottom: calc(15% - 34px);
+  margin: 0; text-align: center;
+  font-size: 11px; letter-spacing: .28em; text-indent: .28em;
+  color: #626d7b; text-transform: uppercase;
+}
+
+/* 跟随 FC 的转场：加载完成时整页淡出（main.js 加 .leaving） */
+#loading.leaving { animation: fkLeave .52s ease forwards; pointer-events: none; }
+@keyframes fkLeave { to { opacity: 0; } }
+
+/* ============================================================
+ *  开局界面（★ 用户要求：背景 = 斜角实时俯视球场，选项简洁透明）
+ *  背后是**真实渲染的球场**（main.js 的 enterMenuCam 把相机摆成斜角俯视，
+ *  世界照常更新：广告牌换主题、大屏走字），所以这里只用**轻量遮罩 + 半透明卡**，
+ *  把球场透出来，别再糊一层不透明渐变把它盖死。
+ *
+ *  ★ 布局（用户要求）：**不要**左侧品牌名 / 不要键位提示；
+ *    两张队卡**居中并排**，队名放在**卡片下面**。→ 单列窄卡（.sCardSolo）。
+ * ============================================================ */
+.sBg {
+  position: absolute; inset: 0; pointer-events: none;
+  /* 只做"上淡下深"的轻遮罩：上方让球场亮出来，下方压暗保证按钮可读。
+   * （不要写成不透明渐变 —— 那是把球场盖死的元凶） */
+  background:
+    linear-gradient(180deg, rgba(3, 6, 11, .10) 0%, rgba(3, 6, 11, .34) 52%, rgba(2, 4, 8, .68) 100%);
+}
+.sCard {
+  position: relative; z-index: 1;
+  width: min(940px, 94vw); max-height: 94vh; overflow-y: auto;
+  display: grid; grid-template-columns: 1fr 1.15fr;
+  /* ★ 简洁透明：毛玻璃 + 低不透明度，球场从后面透出来（还能隐约看到草皮和看台） */
+  background: linear-gradient(160deg, rgba(8, 15, 24, .40), rgba(4, 8, 13, .30));
+  backdrop-filter: blur(10px) saturate(1.15);
+  -webkit-backdrop-filter: blur(10px) saturate(1.15);
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 18px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .55), inset 0 1px 0 rgba(255, 255, 255, .1);
+  animation: vFade .5s ease both;
+}
+/* 单列居中的窄卡片：标志 → 昵称 → 两张队卡 → 进入按钮 */
+.sCardSolo {
+  width: min(460px, 92vw);
+  display: flex; flex-direction: column; align-items: center;
+  padding: 30px 28px 26px;
+  gap: 0;
+}
+.sCardSolo .sMark { margin-bottom: 18px; }
+
+/* —— 左侧品牌区（简洁：去掉高饱和泛光，只留干净的标 + 字） —— */
+.sBrand {
+  position: relative; padding: 40px 32px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+  border-right: 1px solid rgba(255, 255, 255, .09);
+  border-radius: 18px 0 0 18px;
+}
+.sMark {
+  width: 68px; height: 68px; margin-bottom: 18px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px; font-weight: 900; letter-spacing: 1px; font-style: italic; color: #0a1018;
+  background: linear-gradient(150deg, #ffffff 0%, #e3ecf4 55%, #c3d0dc 100%);
+  border-radius: 16px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .45), inset 0 -2px 0 rgba(0, 20, 40, .12);
+}
+.sTitle {
+  font-size: 40px; font-weight: 900; letter-spacing: 10px; text-indent: 10px;
+  background: linear-gradient(180deg, #ffffff 30%, #cfe0ee 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 4px 16px rgba(0, 0, 0, .5));
+}
+.sSub { margin-top: 9px; font-size: 11px; letter-spacing: 6px; color: rgba(255, 255, 255, .48); }
+.sChips { display: flex; gap: 8px; margin-top: 20px; }
+.sChips span {
+  padding: 6px 13px; font-size: 12px; font-weight: 600; letter-spacing: 1px; color: rgba(255, 255, 255, .78);
+  background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .14); border-radius: 999px;
+}
+.sDesc { margin-top: 18px; font-size: 12px; line-height: 1.9; color: rgba(255, 255, 255, .46); letter-spacing: .5px; }
+
+/* —— 右侧加入区（简洁透明：输入框 / 队别 / 按钮统一成半透明白描边） —— */
+.sJoin { padding: 32px 34px 28px; display: flex; flex-direction: column; }
+.sLabel {
+  font-size: 11px; font-weight: 700; letter-spacing: 2px; color: rgba(255, 255, 255, .55);
+  margin-bottom: 8px; text-transform: uppercase;
+}
+#start input {
+  width: 100%; padding: 13px 16px; margin-bottom: 20px; font-size: 15px;
+  background: rgba(6, 10, 16, .58); border: 1px solid rgba(255, 255, 255, .18); border-radius: 11px;
+  color: #f2f6fa; outline: none; letter-spacing: .5px;
+  transition: border-color .2s, box-shadow .2s, background .2s;
+}
+#start input::placeholder { color: rgba(255, 255, 255, .34); }
+#start input:focus { background: rgba(6, 10, 16, .72); border-color: rgba(255, 255, 255, .5); box-shadow: 0 0 0 3px rgba(255, 255, 255, .08); }
+
+.sTeams { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 22px; }
+/* ★ 两张队卡：居中并排；**卡片本身只有队色大圆**，队名排在**卡片下面** */
+.sCardSolo .sTeams {
+  width: 100%; grid-template-columns: repeat(2, 1fr); gap: 16px;
+  margin: 16px 0 22px;
+}
+.sCardSolo .sTeam {
+  padding: 16px 10px 12px; gap: 0;
+  background: rgba(255, 255, 255, .05);
+  border: 1.5px solid rgba(255, 255, 255, .16);
+  border-radius: 14px;
+}
+.sCardSolo .sTeam i {
+  width: 44px; height: 44px; border-radius: 50%; margin-bottom: 12px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .35), inset 0 -2px 0 rgba(0, 0, 0, .22);
+}
+.sCardSolo .sTeam b { font-size: 15px; }
+.sCardSolo .sTeam em { margin-top: 2px; }
+.sCardSolo .sTeam.on {
+  background: rgba(255, 255, 255, .16);
+  border-color: rgba(255, 255, 255, .72);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .28), 0 10px 26px rgba(0, 0, 0, .4);
+}
+.sCardSolo .sTeam.on b { color: #fff !important; }
+.sCardSolo .sTeam.on em { color: rgba(255, 255, 255, .6) !important; }
+/* 单列卡里输入框和进入按钮满宽 */
+.sCardSolo #nameIn { width: 100%; margin-bottom: 0; }
+.sCardSolo #joinBtn { width: 100%; }
+
+.sTeam {
+  position: relative; padding: 14px 8px 12px; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  background: rgba(255, 255, 255, .06); border: 1.5px solid rgba(255, 255, 255, .16); border-radius: 12px;
+  color: rgba(255, 255, 255, .6); font-family: inherit;
+  transition: transform .14s, border-color .18s, background .18s;
+}
+.sTeam i {
+  width: 12px; height: 12px; border-radius: 50%; margin-bottom: 3px;
+  background: rgba(255, 255, 255, .45);
+}
+.sTeam b { font-size: 14px; font-weight: 700; letter-spacing: 1px; color: rgba(255, 255, 255, .88); }
+.sTeam em { font-size: 9px; font-style: normal; letter-spacing: 1.5px; color: rgba(255, 255, 255, .4); }
+.sTeam:hover { transform: translateY(-2px); background: rgba(255, 255, 255, .1); border-color: rgba(255, 255, 255, .3); }
+/* 队色只留**小圆点**（用户要简洁透明；这三颗圆点是唯一必要的用色） */
+.sTeam.tA i { background: #ff4d5e; }
+.sTeam.tB i { background: #3f8cff; }
+.sTeam.tR i { background: linear-gradient(135deg, #ff4d5e 0 50%, #3f8cff 50% 100%); }
+.sTeam.on { background: rgba(255, 255, 255, .17); border-color: rgba(255, 255, 255, .62); }
+.sTeam.on b { color: #fff; }
+
+#joinBtn {
+  width: 100%; padding: 15px 20px; cursor: pointer; border: 0; border-radius: 12px;
+  background: rgba(255, 255, 255, .92); color: #0b1119;
+  font-family: inherit; font-size: 16px; font-weight: 800; letter-spacing: 4px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, .4);
+  transition: transform .15s, box-shadow .2s, background .2s;
+}
+#joinBtn:hover { transform: translateY(-2px); background: #fff; box-shadow: 0 16px 34px rgba(0, 0, 0, .5); }
+#joinBtn:active { transform: translateY(0); }
+#joinBtn:disabled { filter: grayscale(.4) brightness(.8); cursor: default; transform: none; }
+
+.sKeys { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 20px; }
+.sK {
+  display: flex; align-items: center; gap: 7px; padding: 7px 9px;
+  background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 255, 255, .1); border-radius: 8px;
+  font-size: 11px; color: rgba(255, 255, 255, .6); white-space: nowrap; overflow: hidden;
+}
+.sK kbd {
+  flex: 0 0 auto; padding: 2px 6px; font-family: inherit; font-size: 10px; font-weight: 700; color: rgba(255, 255, 255, .9);
+  background: rgba(255, 255, 255, .12); border: 1px solid rgba(255, 255, 255, .18); border-radius: 5px;
+}
+.sTip { margin-top: 14px; font-size: 11px; line-height: 1.8; color: rgba(255, 255, 255, .42); letter-spacing: .3px; }
+.sTip kbd {
+  padding: 2px 6px; font-family: inherit; font-size: 10px; font-weight: 700; color: rgba(255, 255, 255, .88);
+  background: rgba(255, 255, 255, .12); border: 1px solid rgba(255, 255, 255, .18); border-radius: 5px;
+}
+
+@keyframes vFade { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+/* 窄屏 / 触屏：单列 */
+@media (max-width: 780px) {
+  .sCard { grid-template-columns: 1fr; }
+  .sBrand { padding: 26px 22px 20px; border-right: 0; border-bottom: 1px solid rgba(255, 255, 255, .1); border-radius: 18px 18px 0 0; }
+  .sMark { width: 56px; height: 56px; font-size: 21px; margin-bottom: 12px; }
+  .sTitle { font-size: 30px; letter-spacing: 7px; }
+  .sDesc { display: none; }
+  .sJoin { padding: 22px 20px 24px; }
+  .sKeys { grid-template-columns: repeat(2, 1fr); }
+}
+body.touch .sCard { width: min(560px, 94vw); }
+body.touch .sKeys { grid-template-columns: repeat(2, 1fr); }
+
+/* ============================================================
+ *  押注商店（B 键）
+ * ============================================================ */
+#shop {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(4,7,11,.62); backdrop-filter: blur(3px);
+}
+#shop[hidden] { display: none; }
+.shCard {
+  width: min(520px, 94vw); padding: 20px 22px 18px;
+  background: linear-gradient(165deg, rgba(23,31,43,.98), rgba(11,16,24,.99));
+  border: 1px solid rgba(130,165,210,.2); border-radius: 18px;
+  box-shadow: 0 30px 80px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.06);
+  animation: vFade .22s ease both;
+}
+.shHead { display: flex; align-items: center; gap: 10px; }
+.shHead > b { font-size: 17px; font-weight: 800; letter-spacing: 2px; color: #eef3f9; }
+.shRound { font-size: 11px; color: #7c8fa6; letter-spacing: 1px; }
+.shCoins {
+  margin-left: auto; font-size: 13px; color: #9fe4ff; letter-spacing: .5px;
+  background: rgba(92,225,255,.1); border: 1px solid rgba(92,225,255,.28);
+  padding: 4px 10px; border-radius: 999px;
+}
+.shCoins b { font-size: 14px; }
+.shClose {
+  width: 28px; height: 28px; cursor: pointer; font-family: inherit; font-size: 13px;
+  color: #9db0c6; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1);
+  border-radius: 8px; transition: background .15s, color .15s;
+}
+.shClose:hover { background: rgba(255,90,110,.18); color: #ffd0d8; }
+.shTip { margin: 12px 0 14px; font-size: 11px; line-height: 1.7; color: #748798; }
+.shTip b { color: #b9c9dc; }
+
+.shRows { display: flex; flex-direction: column; gap: 10px; }
+.shRow {
+  display: grid; grid-template-columns: 14px 1fr 76px 76px 96px; align-items: center; gap: 10px;
+  padding: 12px 14px; border-radius: 13px;
+  background: rgba(255,255,255,.035); border: 1.5px solid rgba(255,255,255,.08);
+  transition: border-color .18s, background .18s;
+}
+.shRow .shDot { width: 12px; height: 12px; border-radius: 50%; }
+.shRow.tA .shDot { background: #ff4d5e; box-shadow: 0 0 10px rgba(255,77,94,.6); }
+.shRow.tB .shDot { background: #3f8cff; box-shadow: 0 0 10px rgba(63,140,255,.6); }
+.shRow.tA.mine { border-color: #ff4d5e; background: rgba(255,77,94,.1); }
+.shRow.tB.mine { border-color: #3f8cff; background: rgba(63,140,255,.1); }
+.shName b { display: block; font-size: 14px; color: #e6edf6; letter-spacing: 1px; }
+.shName em { font-size: 9px; font-style: normal; letter-spacing: 1.4px; color: #62748a; }
+.shOdds, .shPool { text-align: center; }
+.shOdds b { display: block; font-size: 17px; font-weight: 800; color: #9fe4ff; font-variant-numeric: tabular-nums; }
+.shPool b { display: block; font-size: 14px; font-weight: 700; color: #b7c7da; font-variant-numeric: tabular-nums; }
+.shOdds em, .shPool em { font-size: 9px; font-style: normal; color: #62748a; letter-spacing: 1px; }
+.shBet {
+  padding: 9px 0; cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 700; letter-spacing: 1px;
+  color: #fff; border: 0; border-radius: 10px; background: linear-gradient(160deg, #4a9eff, #2b7de0);
+  box-shadow: 0 6px 16px rgba(43,125,224,.3);
+  transition: transform .13s, filter .18s;
+}
+.shBet:hover { transform: translateY(-1px); filter: brightness(1.08); }
+.shBet:disabled { filter: grayscale(.6) brightness(.7); cursor: default; transform: none; }
+.shRow.tA.mine .shBet { background: linear-gradient(160deg, #ff6b7a, #d93a4c); box-shadow: 0 6px 16px rgba(217,58,76,.32); }
+.shRow.tB.mine .shBet { background: linear-gradient(160deg, #5ea3ff, #2b6fd0); }
+.shMine { margin-top: 14px; font-size: 12px; color: #8095ab; text-align: center; }
+.shMine b { color: #9fe4ff; font-size: 13px; }
+
+#betToast {
+  position: fixed; left: 50%; top: 16%; transform: translateX(-50%); z-index: 61;
+  max-width: 86vw; padding: 12px 20px; border-radius: 12px; text-align: center;
+  font-size: 13px; line-height: 1.7; color: #cdeeff; letter-spacing: .5px;
+  background: linear-gradient(165deg, rgba(58,44,16,.96), rgba(30,22,8,.97));
+  border: 1px solid rgba(255,200,80,.35);
+  box-shadow: 0 16px 40px rgba(0,0,0,.6);
+  animation: vFade .25s ease both;
+}
+#betToast[hidden] { display: none; }
+
+body.touch .shRow { grid-template-columns: 14px 1fr 60px 60px 82px; gap: 6px; padding: 10px; }
+body.touch .shOdds b { font-size: 15px; }
+
+/* 金币徽标（B 商店入口提示） */
+#coinBox {
+  position: fixed; right: 14px; top: 118px; z-index: 6;
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 999px;
+  font-size: 13px; color: #9fe4ff; letter-spacing: .5px;
+  background: rgba(28,22,8,.72); border: 1px solid rgba(255,200,80,.28);
+  backdrop-filter: blur(4px);
+}
+#coinBox[hidden] { display: none; }
+#coinBox b { font-size: 15px; font-variant-numeric: tabular-nums; }
+#coinBox small { font-size: 10px; color: #6f93b5; letter-spacing: 1px; }
+
+/* 速度表（跑动速度 km/h） */
+#speedBox {
+  position: absolute; left: 50%; bottom: 46px; transform: translateX(-50%);
+  display: flex; align-items: baseline; gap: 5px;
+  padding: 5px 14px; border-radius: 999px;
+  background: rgba(8, 14, 22, .66); border: 1px solid rgba(140, 180, 220, .2);
+  backdrop-filter: blur(4px);
+  font-variant-numeric: tabular-nums;
+}
+#speedBox b {
+  font-size: 19px; font-weight: 800; color: #9fe0ff; letter-spacing: .5px;
+  text-shadow: 0 0 12px rgba(90,190,255,.35);
+}
+#speedBox small { font-size: 10px; color: #6f8ba3; letter-spacing: 1px; }
+#speedBox i {
+  position: absolute; left: 8px; right: 8px; bottom: 2px; height: 2px;
+  border-radius: 2px; background: rgba(255,255,255,.1); overflow: hidden;
+}
+#speedBox i::after {
+  content: ''; display: block; height: 100%; width: 0%;
+  background: linear-gradient(90deg, #4a9eff, #7ee0c0);
+  transition: width .08s linear;
+}
+body.touch #speedBox { bottom: 128px; }
+
+/* 商店子标题（救护车盘分组） */
+.shSub {
+  margin: 16px 0 8px; font-size: 11px; letter-spacing: 1px; color: #8ba0b8;
+  padding-top: 14px; border-top: 1px solid rgba(130,165,210,.14);
+}
+.shRow.ambRow .shDot.amb { background: #ff5a68; box-shadow: 0 0 10px rgba(255,90,104,.55); }
+.shRow.ambRow.tB, .shRow.ambRow[data-amb="small"] .shDot.amb { background: #5aa0ff; box-shadow: 0 0 10px rgba(90,160,255,.55); }
+.shRow.ambRow[data-amb="small"] .shDot.amb { background: #5aa0ff; }
+.shRow.ambRow[data-amb="big"] .shDot.amb { background: #ff5a68; }
+.shRow.ambRow.mine[data-amb="big"] { border-color: #ff5a68; background: rgba(255,90,104,.1); }
+.shRow.ambRow.mine[data-amb="small"] { border-color: #5aa0ff; background: rgba(90,160,255,.1); }
+
+
+/* ============================================================
+ *  EA FC 风格统一层：斜切面板 / 芯片按钮 / 提示条 / 入场动画
+ *  （放在最后，统一覆盖前面各处的圆角与描边，保证一套语言）
+ * ============================================================ */
+
+/* —— 字体：EA FC 用压缩无衬线 + 斜体大字 —— */
+#hud, #setPanel, #shop, #modeSwitch, #setBtn, #killfeed, #start, #loading, #goalBanner {
+  font-family: var(--fc-font);
+}
+
+/* —— 面板：近黑板 + 两个斜切角 + 顶部青线 —— */
+/* ★★ 重要：这里**绝不能**给 #setPanel 加 `position: relative`！
+ * #setPanel 靠 `position: fixed` + `top/right` 定位；一旦被改成 relative，
+ * 它的 `top:134px` 就变成"从正常文档流位置往下推 134px"→ **面板被推到屏幕外**
+ * （表现为"设置打不开"：其实 hidden=false 已经打开，只是看不见）。
+ * 历史遗留 bug：这条规则原来写的 `.shCard, #setPanel { position: relative }`，
+ * .shCard 是商店卡片（需要 relative），但连带把设置面板也带坏了。
+ * → 现在只给 .shCard 加 relative，#setPanel 保持 fixed。 */
+.shCard, #setPanel {
+  background: linear-gradient(180deg, rgba(21, 26, 34, .97), rgba(7, 10, 15, .985)) !important;
+  border: 1px solid rgba(255, 255, 255, .1) !important;
+  border-radius: 0 !important;
+  clip-path: polygon(0 0, calc(100% - 22px) 0, 100% 22px, 100% 100%, 22px 100%, 0 calc(100% - 22px));
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .72);
+}
+.shCard { position: relative; }              /* 只有商店卡片需要 relative（它内部有绝对定位子元素） */
+.shCard::before, #setPanel::before {
+  content: ''; position: absolute; left: 0; top: 0; height: 2px; width: 62%;
+  background: linear-gradient(90deg, var(--fc-cyan), rgba(92, 225, 255, 0));
+}
+#shop:not([hidden]) .shCard { animation: fcPanelIn .34s cubic-bezier(.22, .9, .25, 1) both; }
+#setPanel:not([hidden]) { animation: fcPanelIn .3s cubic-bezier(.22, .9, .25, 1) both; }
+@keyframes fcPanelIn {
+  0%   { opacity: 0; transform: translateX(38px) skewX(-4deg);
+         clip-path: polygon(0 0, 0 0, 0 0, 0 100%, 0 100%, 0 100%); }
+  100% { opacity: 1; transform: none;
+         clip-path: polygon(0 0, calc(100% - 22px) 0, 100% 22px, 100% 100%, 22px 100%, 0 calc(100% - 22px)); }
+}
+
+/* —— 面板标题：斜体大写 + 青色斜条 —— */
+.shHead > b, .stHead {
+  font-style: italic; letter-spacing: 3px; text-transform: uppercase;
+}
+.stHead { display: flex; align-items: center; gap: 8px; }
+.shHead > b::before, .stHead::before {
+  content: ''; display: inline-block; width: 4px; height: 15px; margin-right: 2px;
+  background: var(--fc-cyan); transform: skewX(-14deg); vertical-align: -2px;
+}
+
+/* —— 按钮：深板 + 青描边 + 斜切角 + 悬停扫光 —— */
+.shBet, .stSw, #joinBtn, .shClose {
+  position: relative; overflow: hidden;
+  font-family: var(--fc-font); font-weight: 700; letter-spacing: 1.5px;
+  transition: transform .12s ease, filter .18s ease, box-shadow .18s ease;
+}
+.shBet, .stSw {
+  background: linear-gradient(180deg, #1c2633, #0d141d) !important;
+  color: #dff3ff !important;
+  border: 1px solid rgba(92, 225, 255, .38) !important;
+  border-radius: 0 !important;
+  clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
+  text-transform: uppercase;
+}
+.shBet:hover, .stSw:hover { box-shadow: 0 0 18px rgba(92, 225, 255, .28); filter: brightness(1.12); }
+.shBet:active, .stSw:active, #joinBtn:active, .tbtn:active { transform: scale(.96); }
+.stSw.on {
+  background: linear-gradient(180deg, #13aacb, #0a6d8a) !important;
+  color: #eafcff !important; border-color: rgba(160, 240, 255, .8) !important;
+}
+.shBet::after, #joinBtn::after {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 42%; left: -70%;
+  background: linear-gradient(105deg, transparent, rgba(255, 255, 255, .38), transparent);
+  transform: skewX(-18deg); transition: left .55s ease;
+}
+.shBet:hover::after, #joinBtn:hover::after { left: 130%; }
+
+/* ============================================================
+ *  EA FC 26 风格 HUD（统一层，覆盖前面各处的圆角/荧光）
+ *  设计语言：近黑斜切板 · 1px 细线 · 压缩斜体大写 · 克制的单一强调色
+ * ============================================================ */
+
+/* —— 准星：隐藏（FC 没有十字准星，靠机位和力度条表达瞄准）—— */
+#crosshair { display: none !important; }
+
+/* —— 右上角信息组：竖排一条线，互不重叠 —— */
+#modeSwitch { top: calc(10px + env(safe-area-inset-top)); right: calc(12px + env(safe-area-inset-right)); }
+#setBtn { top: calc(48px + env(safe-area-inset-top)); right: calc(12px + env(safe-area-inset-right)); }
+
+#modeBox, #coinBox, #teamTag {
+  left: auto; right: calc(12px + env(safe-area-inset-right));
+  background: linear-gradient(180deg, rgba(17, 21, 28, .95), rgba(5, 7, 11, .96)) !important;
+  border: 1px solid rgba(255, 255, 255, .1) !important;
+  border-left: 2px solid var(--fc-cyan) !important;
+  border-radius: 0 !important;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, .5);
+  text-align: left !important;
+  padding: 7px 16px 8px !important;
+  min-width: 118px;
+  animation: fcIn .28s ease both;
+}
+#modeBox { top: calc(88px + env(safe-area-inset-top)); }
+#teamTag {
+  top: calc(146px + env(safe-area-inset-top));
+  font-size: 11.5px !important; letter-spacing: 1px;
+  border-left: 0 !important; padding-left: 17px !important;
+}
+/* 队伍色左条：用 currentColor，JS 会给它内联 color */
+#teamTag::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: currentColor;
+}
+#coinBox { top: calc(196px + env(safe-area-inset-top)); }
+
+#modeBox b {
+  display: block; font-size: 15px; font-weight: 800; letter-spacing: 2.5px;
+  text-transform: uppercase;
+}
+#modeBox b.attack { color: #ff5d6e; }
+#modeBox b.dance { color: #b58cff; }
+#modeBox small {
+  display: block; margin-top: 2px; font-size: 9px; letter-spacing: 1.6px;
+  color: #6f7c8c; text-transform: uppercase;
+}
+#coinBox b { font-style: italic; letter-spacing: 1px; color: #ffd166; }
+#coinBox small { font-size: 9px; letter-spacing: 1.4px; color: #6f7c8c; }
+
+/* —— 左上：击杀 / 事件播报 —— */
+/* killfeed 挪到比分栏下方（比分栏占住左上角 top 14 / 高约 80） */
+#killfeed { left: calc(14px + env(safe-area-inset-left)); top: calc(104px + env(safe-area-inset-top)); width: 290px; }
+#killfeed div {
+  background: linear-gradient(90deg, rgba(11, 14, 19, .94), rgba(11, 14, 19, 0)) !important;
+  border-left: 2px solid var(--fc-cyan) !important;
+  border-radius: 0 !important;
+  padding: 5px 12px 5px 10px !important;
+  font-style: italic; letter-spacing: .6px;
+  animation: fcFeedIn .28s cubic-bezier(.22, .9, .25, 1) both;
+}
+@keyframes fcFeedIn {
+  from { opacity: 0; transform: translateX(-26px) skewX(-6deg); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* —— 底部中央：血量 / 力度 / 速度（细长斜切条）—— */
+#hpWrap {
+  position: absolute; left: 50%; bottom: calc(100px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: 208px; height: 9px; border-radius: 0; overflow: hidden;
+  background: rgba(4, 6, 10, .82);
+  border: 1px solid rgba(255, 255, 255, .16);
+  clip-path: polygon(7px 0, 100% 0, calc(100% - 7px) 100%, 0 100%);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .5);
+}
+#hpFill { border-radius: 0; background: linear-gradient(90deg, #35d47a, #7ef0b4); transition: width .15s, background .15s; }
+#hpTxt {
+  position: absolute; left: 50%; bottom: calc(114px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  font-size: 10px; letter-spacing: 2.5px; color: #aebccd;
+  text-shadow: 0 1px 3px #000;
+}
+#chargeWrap {
+  left: 50%; bottom: calc(82px + env(safe-area-inset-bottom));
+  width: 208px; height: 7px; border-radius: 0;
+  background: rgba(4, 6, 10, .82);
+  border: 1px solid rgba(255, 255, 255, .16);
+  clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
+}
+#chargeBar {
+  /* 黑白灰：传球=灰白 */
+  background: linear-gradient(90deg, rgba(255,255,255,.55), #fff) !important;
+  box-shadow: none !important;
+}
+#chargeWrap.shoot #chargeBar { background: #fff !important; box-shadow: none !important; }   /* 射门=纯白（靠亮度区分，不用橙色） */
+#chargeWrap::after {
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: #9fb0c2;
+}
+#chargeWrap.shoot::after { color: #ffce9b; }
+/* ★ 传球冷却（3s）：条子压暗 + 标签变黄，明确告诉玩家"现在不能传，等倒计时"。
+   没有这个态，冷却期按左键毫无反馈，玩家会以为按键失灵。 */
+#chargeWrap.cd #chargeBar {
+  background: repeating-linear-gradient(90deg,
+    rgba(255, 206, 155, .30) 0 6px, rgba(255, 206, 155, .10) 6px 12px) !important;
+  box-shadow: none !important;
+}
+#chargeWrap.cd::after { color: #ffce9b; opacity: .85; }
+#chargeWrap.cd { border-color: rgba(255, 206, 155, .38); }
+
+#speedBox {
+  left: 50%; bottom: calc(42px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex; align-items: baseline; gap: 6px;
+  padding: 5px 16px 7px; border-radius: 0;
+  background: linear-gradient(180deg, rgba(17, 21, 28, .94), rgba(5, 7, 11, .95)) !important;
+  border: 1px solid rgba(255, 255, 255, .1) !important;
+  border-left: 2px solid var(--fc-cyan) !important;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%);
+  font-variant-numeric: tabular-nums;
+}
+#speedBox b {
+  font-family: var(--fc-font); font-style: italic;
+  font-size: 21px; font-weight: 800; color: #fff; letter-spacing: .5px;
+  text-shadow: none;
+}
+#speedBox small { font-size: 9px; letter-spacing: 2px; color: #6f7c8c; text-transform: uppercase; }
+#speedBox i { left: 10px; right: 10px; bottom: 3px; height: 2px; border-radius: 0; background: rgba(255, 255, 255, .12); }
+#speedBox i::after { border-radius: 0; background: rgba(255, 255, 255, .55); }
+
+/* —— 提示条：斜切小黑板 —— */
+#ballHint, #actionHint, #lockTip, #lockTag {
+  background: linear-gradient(180deg, rgba(17, 21, 28, .95), rgba(5, 7, 11, .96)) !important;
+  border: 1px solid rgba(255, 255, 255, .12) !important;
+  border-radius: 0 !important;
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, .5);
+  font-style: italic; letter-spacing: 1px;
+  animation: fcIn .28s ease both;
+}
+#ballHint { color: #eaf4ff; border-left: 2px solid var(--fc-cyan) !important; }
+#ballHint b, #actionHint b { color: var(--fc-cyan); }
+#actionHint { color: #eaf4ff; border-left: 2px solid var(--fc-cyan) !important; }
+#lockTag { top: calc(64px + env(safe-area-inset-top)); color: #7ef0b4; border-left: 2px solid #35d47a !important; }
+#lockTip { color: #04121d; background: var(--fc-cyan) !important; border: 0 !important; }
+
+@keyframes fcIn { from { opacity: 0; transform: translate(var(--fcTx, 0), 6px); } to { opacity: 1; } }
+#ballHint { --fcTx: -50%; left: 50%; transform: translateX(-50%); }
+#actionHint { --fcTx: -50%; left: 50%; transform: translateX(-50%); }
+#lockTag { --fcTx: -50%; left: 50%; transform: translateX(-50%); }
+#lockTip { --fcTx: -50%; left: 50%; transform: translateX(-50%); }
+
+/* —— 延迟 / 帮助 —— */
+#net {
+  left: calc(14px + env(safe-area-inset-left));
+  bottom: calc(14px + env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, rgba(17, 21, 28, .9), rgba(5, 7, 11, .92)) !important;
+  border: 1px solid rgba(255, 255, 255, .1) !important;
+  border-radius: 0 !important;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%);
+  color: #7c8b9d; font-size: 11px; letter-spacing: 1px;
+}
+#help {
+  right: calc(14px + env(safe-area-inset-right));
+  bottom: calc(14px + env(safe-area-inset-bottom));
+  width: 328px;
+  background: linear-gradient(180deg, rgba(13, 17, 23, .93), rgba(5, 7, 11, .95)) !important;
+  border: 1px solid rgba(255, 255, 255, .09) !important;
+  border-radius: 0 !important;
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+  font-size: 11px; line-height: 1.85; color: #8a99ab; font-style: normal;
+  padding: 11px 14px 12px;
+}
+#help[hidden] { display: none; }
+#help b {
+  display: block; margin-bottom: 5px; padding-bottom: 5px;
+  font-family: var(--fc-font); font-style: italic; font-size: 12px; letter-spacing: 3px;
+  color: var(--fc-cyan); text-transform: uppercase;
+  border-bottom: 1px solid rgba(255, 255, 255, .08);
+}
+#helpBtn {
+  position: fixed; right: calc(52px + env(safe-area-inset-right));
+  top: calc(48px + env(safe-area-inset-top)); z-index: 86;
+  width: 34px; height: 34px; border-radius: 50%; font-size: 15px; line-height: 1;
+  background: rgba(8, 17, 29, .6); color: #9db0c6; border: 1px solid rgba(255, 255, 255, .18);
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+#helpBtn.on { color: #06131d; background: var(--fc-cyan); border-color: var(--fc-cyan); }
+
+/* —— 大招横幅 / 进球动画保持不变，只统一字体 —— */
+#banner { text-transform: uppercase; letter-spacing: 6px; font-style: italic; }
+
+/* —— 设置面板里的说明文字—— */
+.stHead small, .stRow small, .stFoot { color: #73808f; }
+.stRow { border-top: 1px solid rgba(255, 255, 255, .07); }
+
+/* —— 右上角两个圆形图标按钮 & 操作方案切换：换成方板，统一语言 —— */
+#setBtn, #helpBtn {
+  border-radius: 9px; font-family: var(--fc-font);
+  background: linear-gradient(180deg, rgba(17, 21, 28, .94), rgba(5, 7, 11, .95));
+  border: 1px solid rgba(255, 255, 255, .16);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .45);
+  transition: color .15s, border-color .15s, background .15s;
+}
+#modeSwitch {
+  border-radius: 0 !important;
+  clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
+  background: linear-gradient(180deg, rgba(17, 21, 28, .94), rgba(5, 7, 11, .95)) !important;
+  border: 1px solid currentColor;
+  font-family: var(--fc-font); letter-spacing: 1.5px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .45);
+}
+#modeSwitch:active { background: var(--fc-cyan) !important; color: #06131d !important; }
+
+body.touch #speedBox { bottom: calc(128px + env(safe-area-inset-bottom)); }
+body.touch #hpWrap { bottom: calc(184px + env(safe-area-inset-bottom)); }
+body.touch #hpTxt { bottom: calc(198px + env(safe-area-inset-bottom)); }
+body.touch #chargeWrap { bottom: calc(166px + env(safe-area-inset-bottom)); }
+body.touch #helpBtn { top: calc(48px + env(safe-area-inset-top)); }
+
+/* ============================================================
+ *  FC26 统一优化层（放在最末，覆盖前面零散样式）
+ * ============================================================ */
+
+/* 比分栏出现时，右上角信息组下移一点，避免和进球横幅挤 */
+#goalBanner { bottom: 26%; }
+
+/* 模式/金币/队伍标签：用 FC 的"细线 + 小字"排布，右上竖排一条线 */
+#modeBox, #teamTag, #coinBox {
+  min-width: 132px;
+}
+#modeBox b { font-size: 14.5px; letter-spacing: 2px; }
+#modeBox small { letter-spacing: 1.4px; }
+
+/* 底部状态条再收一点，别抢画面 */
+#hpWrap, #chargeWrap { width: 216px; }
+#speedBox b { font-size: 20px; }
+
+/* 进球横幅：FC 那种"整条斜扫 + 大字"，只统一字距 */
+.gbWord { letter-spacing: 10px; }
+
+/* 触屏下比分栏缩一点 */
+body.touch .ms-row { height: 28px; }
+body.touch .ms-team { width: 62px; }
+body.touch .ms-team .fcName { font-size: 12px; letter-spacing: .5px; }
+body.touch .ms-score, body.touch .ms-time { width: 50px; }
+
+/* 窄屏：比分栏别太宽 */
+@media (max-width: 480px) {
+  .ms-team { width: 60px; }
+  .ms-team .fcName { font-size: 12px; letter-spacing: 0; }
+  .ms-score, .ms-time { width: 48px; }
+}
+
+/* ============================================================
+ *  FK26 品牌字（加载页 .fkWord 的通用版，开始界面复用同一套观感）
+ *  白 · 超粗 · 斜体 · 紧字距 —— 只换颜色不做花哨效果
+ * ============================================================ */
+.fkWord2 {
+  font-family: "Archivo Black", "Arial Black", Impact, "Haettenschweiler", "Microsoft YaHei", sans-serif;
+  font-size: 54px; font-weight: 900; font-style: italic;
+  letter-spacing: -.02em; line-height: .9; text-indent: 0;
+  background: linear-gradient(168deg, #ffffff 20%, #f2f6fa 48%, #c9d2dc 76%, #ffffff 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 6px 26px rgba(255, 255, 255, .16));
+}
+.fkMark {
+  width: 86px; height: 60px; margin-bottom: 18px;
+  border-radius: 12px; letter-spacing: -.02em;
+  font-family: "Archivo Black", "Arial Black", Impact, sans-serif;
+  font-size: 22px; font-style: italic;
+  color: #05070a;
+  background: linear-gradient(160deg, #ffffff 8%, #e9eef4 52%, #c3ccd6 100%);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .55), 0 0 0 1px rgba(255, 255, 255, .22) inset;
+}
+/* ============================================================
+ *  ★ FK26 黑白灰简约层（用户要求：UI 换成黑白灰、色块简约、
+ *    半透明；非得用艳色就是小圆色条/小圆点）
+ *  放在最末，覆盖前面所有彩色定义。原则：
+ *    · 底色 = 半透明黑（rgba(0,0,0,.4~.62)）
+ *    · 文字 = 白/灰阶（rgba(255,255,255,.5~.95)）
+ *    · 描边 = 1px 白色低透明度
+ *    · 唯一的艳色：队伍小圆色条 + 直播小圆点 + 血量条低血警示
+ * ============================================================ */
+
+/* —— 比分栏（用户提供的计分板组件）：★★ 配色一律用组件原值，不套黑白灰 ★★
+ *   这里**不能再覆盖 .ms-team 的 background** ——
+ *   之前在这条"黑白灰统一层"里把它压成了半透明黑，把用户特意调的紫色底盖掉了。
+ *   本层只保留**功能性**样式：进球方的队名格闪一下（谁进的球一眼看得出来）。 */
+.ms-team.scored {
+  background: rgba(255, 255, 255, .93);
+  transition: background .18s;
+}
+.ms-team.scored .fcName { color: #10151c; }
+
+/* —— 右上信息组：统一成半透明黑块 + 灰白字 —— */
+#modeBox, #teamTag, #coinBox {
+  background: rgba(10, 12, 16, .55) !important;
+  border: 1px solid rgba(255, 255, 255, .10) !important;
+  border-radius: 3px !important;
+  color: rgba(255, 255, 255, .88) !important;
+  box-shadow: none !important;
+}
+#modeBox b { color: #fff !important; font-style: normal; }
+#modeBox small, #coinBox small, #teamTag small { color: rgba(255, 255, 255, .45) !important; font-style: normal; }
+/* 金币：改成灰白（原来是金色 #ffd166） */
+#coinBox b, #coinTxt { color: rgba(255, 255, 255, .92) !important; font-style: normal !important; }
+/* 队伍标签：队色只保留左侧**小圆色条**，文字一律白 */
+#teamTag { color: rgba(255, 255, 255, .88) !important; border-left: 0 !important; }
+#teamTag::before {
+  content: ''; position: absolute; left: 6px; top: 50%; transform: translateY(-50%);
+  width: 4px; height: 12px; border-radius: 2px; background: currentColor;
+}
+#teamTag { padding-left: 17px !important; position: absolute !important; }
+
+/* —— 底部状态条：黑白灰 + 半透明 —— */
+#hpWrap { background: rgba(8, 10, 13, .55) !important; border: 1px solid rgba(255,255,255,.12) !important; }
+#hpFill { background: rgba(255, 255, 255, .82) !important; }
+/* 低血才回艳色（这是唯一有信息价值的用色） */
+#hpWrap.low #hpFill { background: #ff4d5e !important; }
+#hpTxt { color: rgba(255,255,255,.9) !important; text-shadow: 0 1px 4px #000; font-style: normal !important; }
+#chargeWrap { background: rgba(8, 10, 13, .55) !important; border: 1px solid rgba(255,255,255,.12) !important; }
+#chargeBar { background: rgba(255, 255, 255, .88) !important; box-shadow: none !important; }
+#speedBox {
+  background: rgba(8, 10, 13, .55) !important;
+  border: 1px solid rgba(255, 255, 255, .10) !important;
+  border-radius: 3px !important;
+}
+#speedBox b, #speedTxt { color: #fff !important; font-style: normal !important; }
+#speedBox small { color: rgba(255,255,255,.45) !important; }
+#speedBar { background: rgba(255, 255, 255, .55) !important; box-shadow: none !important; }
+
+/* —— 提示条 / 标签：半透明黑，去掉荧光色 —— */
+#ballHint, #actionHint, #lockTag, #lockTip {
+  background: rgba(10, 12, 16, .62) !important;
+  border: 1px solid rgba(255, 255, 255, .12) !important;
+  border-radius: 3px !important;
+  color: rgba(255, 255, 255, .9) !important;
+  box-shadow: none !important;
+}
+#ballHint b, #actionHint b, #lockTag b { color: #fff !important; }
+
+/* —— 横幅：白字黑底，不做彩色 —— */
+#banner {
+  color: #fff !important;
+  text-shadow: 0 2px 16px rgba(0, 0, 0, .9), 0 0 30px rgba(0, 0, 0, .7) !important;
+  font-style: normal !important;
+  letter-spacing: 8px !important;
+}
+
+/* —— 击杀播报 / 战报：半透明黑 + 灰阶 —— */
+#killfeed > div {
+  background: rgba(10, 12, 16, .55) !important;
+  border-left: 2px solid rgba(255, 255, 255, .35) !important;
+  border-radius: 2px !important;
+  color: rgba(255, 255, 255, .86) !important;
+  box-shadow: none !important;
+}
+#killfeed b { color: #fff !important; }
+
+/* —— 网络延迟：灰白小字 —— */
+#net {
+  background: rgba(10, 12, 16, .5) !important;
+  border: 1px solid rgba(255, 255, 255, .09) !important;
+  border-radius: 2px !important;
+  color: rgba(255, 255, 255, .55) !important;
+  font-style: normal !important;
+}
+
+/* —— 设置面板：黑白灰半透明 —— */
+#setPanel {
+  background: rgba(10, 12, 16, .82) !important;
+  border: 1px solid rgba(255, 255, 255, .13) !important;
+  border-radius: 4px !important;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .6) !important;
+}
+.stHead { color: #fff !important; font-style: normal !important; border-bottom: 1px solid rgba(255,255,255,.10) !important; }
+.stHead small, .stRow small, .stFoot { color: rgba(255, 255, 255, .45) !important; font-style: normal !important; }
+.stRow { border-top: 1px solid rgba(255, 255, 255, .07) !important; color: rgba(255,255,255,.9) !important; }
+.stSw {
+  background: rgba(255, 255, 255, .07) !important;
+  border: 1px solid rgba(255, 255, 255, .18) !important;
+  color: rgba(255, 255, 255, .9) !important;
+  border-radius: 3px !important;
+}
+.stSw.on { background: rgba(255, 255, 255, .92) !important; color: #0a0c10 !important; border-color: transparent !important; }
+
+/* —— 右上角两个方板按钮：半透明黑 —— */
+#setBtn, #helpBtn {
+  background: rgba(10, 12, 16, .55) !important;
+  border: 1px solid rgba(255, 255, 255, .12) !important;
+  color: rgba(255, 255, 255, .85) !important;
+  border-radius: 3px !important;
+  box-shadow: none !important;
+}
+#setBtn:hover, #helpBtn:hover { background: rgba(255, 255, 255, .14) !important; }
+
+/* —— 操作说明：半透明黑 —— */
+#help {
+  background: rgba(10, 12, 16, .72) !important;
+  border: 1px solid rgba(255, 255, 255, .12) !important;
+  border-radius: 4px !important;
+  color: rgba(255, 255, 255, .82) !important;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, .6) !important;
+}
+#help b { color: #fff !important; }
+
+/* —— 进球横幅：白字黑底，去掉彩色扫光 —— */
+#goalBanner .gbTint { background: rgba(6, 8, 11, .78) !important; }
+.gbWord, .gbScorer, .gbScore, .gbScore i, .gbScore em { color: #fff !important; font-style: normal !important; }
+.gbWord { letter-spacing: 12px !important; }
+
+/* —— 角色头顶名牌：白色细体（去掉青色高亮） —— */
+/* （名牌是 3D Sprite，颜色在 character.js 里控制，这里只兜底 UI 侧） */
+
+/* ============================================================
+ *  属性卡 / 加速条 —— 黑白灰简约化
+ *  （原来是深蓝底 + 青色边框，跟新的黑白灰 HUD 不搭）
+ * ============================================================ */
+.cardKey {
+  background: rgba(255, 255, 255, .92) !important;
+  color: #0a0c10 !important;
+  box-shadow: none !important;
+  font-weight: 700;
+}
+.futCard {
+  background: rgba(10, 12, 16, .62) !important;
+  border: 1px solid rgba(255, 255, 255, .22) !important;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .5) !important;
+  color: rgba(255, 255, 255, .92) !important;
+  /* 玻璃感：背景模糊，符合"半透明简约" */
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+.futGlow { display: none !important; }                    /* 去掉青色辉光 */
+.futLeague { color: rgba(255, 255, 255, .68) !important; }
+.futRating span { color: rgba(255, 255, 255, .60) !important; }
+.futFig { opacity: .78; filter: grayscale(1) contrast(1.05) !important; }   /* 人形图去色 */
+.futName { border-bottom-color: rgba(255, 255, 255, .28) !important; }
+.futStats i, .futStats b { color: rgba(255, 255, 255, .92) !important; }
+.futFoot, .futBadges i { color: rgba(255, 255, 255, .55) !important; }
+.futBadges i, .futAlts i { background: rgba(255, 255, 255, .12) !important; }
+.futFly { box-shadow: 0 20px 60px rgba(0, 0, 0, .65) !important; }
+
+/* 加速倒计时：黑白灰 */
+#boostHud {
+  background: rgba(10, 12, 16, .72) !important;
+  border: 1px solid rgba(255, 255, 255, .18) !important;
+  color: rgba(255, 255, 255, .9) !important;
+  font-style: normal;
+}
+#boostHud b { color: #fff !important; }
+#boostHud.flash { animation: boostFlash 0.9s ease; }
+
+/* ============================================================
+ *  开始界面 —— ★ 用户要求：背景是斜角实时俯视球场，选项简洁透明
+ *  ⚠️ 这一层原来是"黑白灰简约化 + 不透明卡片"，会把背后的球场完全盖住。
+ *     现在只做**轻量**处理：卡片保持半透明毛玻璃，球场要能透出来。
+ *     （上方 .sBg / .sCard 的定义已经是最终值，这里不再改写它们。）
+ * ============================================================ */
+.sSub, .sDesc { color: rgba(255, 255, 255, .52) !important; font-style: normal !important; }
+.sChips span {
+  background: rgba(255, 255, 255, .07) !important;
+  border: 1px solid rgba(255, 255, 255, .13) !important;
+  color: rgba(255, 255, 255, .82) !important;
+  border-radius: 999px !important;
+}
+.sLabel { color: rgba(255, 255, 255, .5) !important; }
+#nameIn {
+  background: rgba(6, 10, 16, .58) !important;
+  border: 1px solid rgba(255, 255, 255, .18) !important;
+  border-radius: 11px !important;
+  color: #fff !important;
+}
+#nameIn::placeholder { color: rgba(255, 255, 255, .3) !important; }
+#nameIn:focus { border-color: rgba(255, 255, 255, .5) !important; outline: none !important; }
+/* 选队：简洁透明，队色只留小圆点 */
+.sTeam {
+  background: rgba(255, 255, 255, .06) !important;
+  border: 1.5px solid rgba(255, 255, 255, .16) !important;
+  border-radius: 12px !important;
+  color: rgba(255, 255, 255, .82) !important;
+  position: relative;
+}
+.sTeam i {
+  /* 队色**小圆点**（用户要简洁；单列卡里会被 .sCardSolo .sTeam i 放大成 44px 大圆） */
+  position: static; transform: none;
+  width: 12px; height: 12px; border-radius: 50%; margin-bottom: 3px;
+}
+/* ★ 单列卡的队卡：队色**大圆**（队名在卡片下面），要压过上面这条 12px 的规则 */
+.sCardSolo .sTeam i { width: 44px; height: 44px; margin-bottom: 12px; }
+.sTeam b { color: rgba(255, 255, 255, .9) !important; font-style: normal !important; }
+.sTeam em { color: rgba(255, 255, 255, .4) !important; font-style: normal !important; }
+.sTeam.on {
+  background: rgba(255, 255, 255, .92) !important;
+  border-color: transparent !important;
+}
+.sTeam.on b { color: #0a0c10 !important; }
+.sTeam.on em { color: rgba(10, 12, 16, .55) !important; }
+/* 进入按钮：白底黑字 */
+#joinBtn {
+  background: #fff !important;
+  color: #0a0c10 !important;
+  border: 0 !important;
+  border-radius: 12px !important;
+  font-weight: 800 !important;
+  letter-spacing: 4px !important;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, .4) !important;
+}
+#joinBtn:hover { background: rgba(255, 255, 255, .9) !important; }
+.sKeys .sK kbd {
+  background: rgba(255, 255, 255, .12) !important;
+  border: 1px solid rgba(255, 255, 255, .18) !important;
+  color: rgba(255, 255, 255, .88) !important;
+  border-radius: 5px !important;
+}
+.sKeys .sK span, .sTip { color: rgba(255, 255, 255, .5) !important; }
+.sTip kbd { color: rgba(255, 255, 255, .85) !important; }
+
+/* 金币：连 emoji 一起处理（🪙 自带金色，用灰度滤镜压掉） */
+#coinBox { filter: grayscale(1) !important; }
+#coinBox b, #coinBox #coinTxt { color: rgba(255, 255, 255, .95) !important; font-style: normal !important; }
+#coinBox small { color: rgba(255, 255, 255, .42) !important; }
+
+/* 操作模式切换（键鼠/触屏）：黑白灰 */
+#modeSwitch {
+  background: rgba(10, 12, 16, .55) !important;
+  border: 1px solid rgba(255, 255, 255, .12) !important;
+  border-radius: 3px !important;
+  color: rgba(255, 255, 255, .88) !important;
+  box-shadow: none !important;
+}
+#modeSwitch.toTouch, #modeSwitch.toDesktop { border-color: rgba(255, 255, 255, .12) !important; color: rgba(255, 255, 255, .88) !important; }
+#modeSwitch:active { background: rgba(255, 255, 255, .2) !important; color: #fff !important; }
+
+/* ============================================================
+ *  开始界面 v3 —— 两侧红/蓝球衣 3D 模型选队 + 底部一条输入/加入
+ *  （用户要求：场馆只保留球场视角，不再实时渲染踢球；
+ *    两个队用模型当 UI，点击模型选队；旧的选择卡片全部废弃）
+ *
+ *  ★ 这一层必须写在**文件最末尾**：前面"黑白灰统一层"里有
+ *    `#joinBtn { ... !important }` / `#nameIn { ... !important }`，
+ *    同优先级只看先后，带 !important 的更要用 !important 盖。
+ * ============================================================ */
+#start {
+  display: block !important;        /* 原来是 flex 居中卡片；现在是绝对定位布局 */
+  background: transparent !important;
+}
+/* ★ 必须补这条：上面 display:block !important 会盖掉 [hidden] 的 display:none，
+   不加的话加载页期间开始界面就已经露出来了。 */
+#start[hidden] { display: none !important; }
+
+/* —— 顶部品牌（很小，中间让给球场） —— */
+.sTop {
+  position: absolute; top: 20px; left: 0; right: 0;
+  display: flex; align-items: baseline; justify-content: center; gap: 12px;
+  pointer-events: none;
+}
+.sTopMark {
+  font-size: 21px; font-weight: 900; font-style: italic; letter-spacing: 2px;
+  color: #fff; opacity: .86; text-shadow: 0 3px 14px rgba(0, 0, 0, .6);
+}
+.sTopSub {
+  font-size: 9.5px; font-weight: 700; letter-spacing: 5px;
+  color: rgba(255, 255, 255, .38); text-shadow: 0 2px 10px rgba(0, 0, 0, .6);
+}
+
+/* —— 模型下方的队名标签（可点，和点模型等效） —— */
+.sPickTag {
+  position: absolute; bottom: 104px; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 8px 20px; cursor: pointer; font-family: inherit;
+  background: transparent; border: 0; color: rgba(255, 255, 255, .55);
+  transition: color .18s, transform .18s;
+}
+#tagA { left: 19%; }
+#tagB { left: 81%; }
+.sPickTag b { font-size: 20px; font-weight: 800; letter-spacing: 3px; text-shadow: 0 2px 10px rgba(0, 0, 0, .85); }
+.sPickTag em { font-size: 9px; font-style: normal; letter-spacing: 3px; opacity: .55; text-shadow: 0 2px 8px rgba(0, 0, 0, .85); }
+.sPickTag.on { color: #fff; }
+.sPickTag.on em { opacity: .8; }
+.sPickTag:hover { color: #fff; transform: translateX(-50%) translateY(-2px); }
+/* 选中时的下划线（队伍色由 main.js 内联 --tagc 注入） */
+.sPickTag::after {
+  content: ''; margin-top: 6px; width: 0; height: 2px; border-radius: 2px;
+  background: var(--tagc, #fff); opacity: 0; transition: width .2s, opacity .2s;
+}
+.sPickTag.on::after { width: 46px; opacity: .95; }
+
+/* —— 底部一条：左输入框 / 右加入 —— */
+.sBar {
+  position: absolute; left: 50%; bottom: 30px; transform: translateX(-50%);
+  width: min(760px, 92vw);
+  display: flex; align-items: stretch; gap: 10px;
+  padding: 10px;
+  background: rgba(8, 12, 18, .42);
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 14px;
+  backdrop-filter: blur(14px) saturate(1.1);
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .08);
+}
+.sBar input#nameIn {
+  flex: 1 1 auto; min-width: 0;
+  width: auto !important; margin: 0 !important;
+  padding: 13px 16px !important;
+  background: rgba(255, 255, 255, .06) !important;
+  border: 1px solid rgba(255, 255, 255, .14) !important;
+  border-radius: 10px !important;
+  color: #fff !important; font-family: inherit; font-size: 15px; letter-spacing: .5px;
+  outline: none; transition: border-color .18s, box-shadow .18s;
+}
+.sBar input#nameIn::placeholder { color: rgba(255, 255, 255, .32) !important; }
+.sBar input#nameIn:focus {
+  border-color: rgba(255, 255, 255, .46) !important;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, .07) !important;
+}
+.sBar #joinBtn {
+  flex: 0 0 auto; width: 200px;
+  padding: 13px 18px !important;
+  background: #fff !important; color: #0a0c10 !important;
+  border: 0 !important; border-radius: 10px !important;
+  font-family: inherit; font-size: 15px; font-weight: 800; letter-spacing: 4px;
+  box-shadow: none !important; cursor: pointer;
+  transition: transform .14s, background .18s;
+}
+.sBar #joinBtn:hover { background: rgba(255, 255, 255, .88) !important; transform: translateY(-1px); }
+.sBar #joinBtn:disabled { filter: grayscale(.35) brightness(.85); transform: none; cursor: default; }
+
+/* 窄屏：模型会挤到中间，标签下移贴着底条 */
+@media (max-width: 760px) {
+  .sPickTag { bottom: 92px; padding: 6px 10px; }
+  .sPickTag b { font-size: 16px; letter-spacing: 2px; }
+  .sPickTag em { display: none; }
+  .sBar #joinBtn { width: 132px; letter-spacing: 2px; font-size: 14px; }
+}
+
+/* 选择页期间：右上角的设置/说明按钮不该出现（那里只留场馆和队模） */
+body.in-menu #setBtn,
+body.in-menu #helpBtn,
+body.in-menu #modeSwitch,
+body.in-menu #teamTag,
+body.in-menu #coinBox { display: none !important; }
+
+/* —— 选择页 v4：去掉"加入游戏"按钮，点模型直接进 —— */
+.sPickHint {
+  position: absolute; left: 50%; bottom: 88px; transform: translateX(-50%);
+  margin: 0; font-size: 12px; letter-spacing: 2px; white-space: nowrap;
+  color: rgba(255, 255, 255, .62); text-shadow: 0 2px 10px rgba(0, 0, 0, .85);
+  pointer-events: none;
+}
+.sBar { width: min(520px, 92vw) !important; }
+.sBar #joinBtn { display: none !important; }
+.sBar input#nameIn { flex: 1 1 auto !important; text-align: center; }
+@media (max-width: 760px) { .sPickHint { bottom: 78px; font-size: 11px; letter-spacing: 1px; } }
+
+/* ============================================================
+ *  聊天 / 语音（Enter 打字，按住 T 说话）
+ * ============================================================ */
+#chatLog {
+  position: absolute; left: 16px; bottom: 128px; z-index: 6;
+  display: flex; flex-direction: column; gap: 4px;
+  width: min(380px, 42vw); pointer-events: none;
+}
+#chatLog .cm {
+  padding: 5px 10px; font-size: 12.5px; line-height: 1.5; letter-spacing: .3px;
+  color: #e8eef7; background: rgba(6, 10, 16, .62);
+  border-left: 2px solid rgba(255, 255, 255, .3);
+  border-radius: 3px; word-break: break-word;
+  animation: cmIn .18s ease-out both;
+}
+@keyframes cmIn { from { opacity: 0; transform: translateY(6px); } }
+#chatLog .cm b { color: #fff; font-weight: 700; margin-right: 2px; }
+#chatLog .cm.me b { color: #8fe3ff; }
+#chatLog .cm.sys { color: rgba(255, 255, 255, .55); border-left-color: rgba(255, 255, 255, .12); }
+
+#chatIn {
+  position: absolute; left: 50%; bottom: 92px; transform: translateX(-50%);
+  z-index: 8; width: min(520px, 74vw);
+  padding: 10px 14px; font-family: inherit; font-size: 14px; letter-spacing: .3px;
+  color: #fff; background: rgba(8, 12, 18, .86);
+  border: 1px solid rgba(255, 255, 255, .22); border-radius: 8px;
+  outline: none; box-shadow: 0 10px 30px rgba(0, 0, 0, .5);
+}
+#chatIn::placeholder { color: rgba(255, 255, 255, .35); }
+#chatIn:focus { border-color: rgba(120, 220, 255, .6); box-shadow: 0 0 0 3px rgba(120, 220, 255, .14); }
+
+#voiceTag {
+  position: absolute; left: 50%; bottom: 132px; transform: translateX(-50%);
+  z-index: 7; padding: 6px 14px; font-size: 12px; letter-spacing: 1px;
+  color: #fff; background: rgba(8, 12, 18, .8);
+  border: 1px solid rgba(255, 255, 255, .18); border-radius: 999px;
+  pointer-events: none; white-space: nowrap;
+}
+
+/* ============================================================
+ *  聊天提示 + 庆祝语音（转盘 / 次数徽章）
+ * ============================================================ */
+#chatTip {
+  position: absolute; left: 16px; bottom: 100px; z-index: 5;
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; letter-spacing: 1px; color: rgba(255, 255, 255, .55);
+  pointer-events: none; transition: opacity .8s;
+}
+#chatTip kbd {
+  padding: 2px 6px; font-family: inherit; font-size: 10px; font-weight: 700;
+  color: rgba(255, 255, 255, .8); background: rgba(255, 255, 255, .1);
+  border: 1px solid rgba(255, 255, 255, .18); border-radius: 4px;
+}
+#chatTip.fade { opacity: 0; }
+
+/* —— 剩余次数徽章（右下角，小小的） —— */
+#cheerBadge {
+  position: absolute; right: 18px; bottom: 118px; z-index: 6;
+  display: flex; align-items: center; gap: 5px;
+  padding: 5px 10px 5px 8px; border-radius: 999px;
+  background: rgba(6, 10, 16, .62); border: 1px solid rgba(255, 255, 255, .14);
+  font-size: 12px; color: #fff; pointer-events: none;
+  transition: transform .18s, box-shadow .18s;
+}
+#cheerBadge .cbIcon { font-size: 13px; filter: grayscale(.2); }
+#cheerBadge b { font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; }
+#cheerBadge.have { border-color: rgba(255, 214, 92, .5); box-shadow: 0 0 14px rgba(255, 200, 60, .18); }
+#cheerBadge.pop { transform: scale(1.18); box-shadow: 0 0 22px rgba(255, 214, 92, .45); }
+
+/* —— 击球点球（右下角）：圆球 UI + 红点 = 触球部位 —— */
+/* ★ 容器尺寸必须锁死成球本体（62×62）。曾用 flex + right 锚定：宽度由标签决定，
+ *   标签一变长（"正中 · 满力" → "后旋滞空·弧线右弯 · 79%力"）容器就向左变宽，
+ *   居中的圆球被推着横跳 34px —— 用户说的"圆球不固定"就是这个。
+ *   现在 #ballCtl 宽高即球，label 绝对定位挂在球下方居中，不参与宽度计算。 */
+#ballCtl {
+  /* bottom 39 = 22 边距 + 17（标签 13 + 间距 4）：容器高锁成 62 后，要靠它把
+     "整块（球+标签）底距 22px" 的手感补回来，球心绝对位置与旧版一致。 */
+  position: absolute; right: 18px; bottom: 39px; z-index: 6;
+  width: 62px; height: 62px;
+  pointer-events: none; user-select: none;
+}
+#ballCtl .bcBall {
+  position: relative;
+  width: 62px; height: 62px; border-radius: 50%;
+  /* 白底 + 内阴影 = 一颗"皮球"；黑白灰层不动它（这是用户点名的功能 UI） */
+  background:
+    radial-gradient(circle at 34% 30%, rgba(255,255,255,.95), rgba(226,232,238,.88) 58%, rgba(172,182,194,.92));
+  border: 1px solid rgba(255, 255, 255, .35);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .45), inset 0 -6px 12px rgba(0, 0, 0, .16);
+}
+/* 十字参考线（击球点坐标系） */
+#ballCtl .bcGrid { position: absolute; background: rgba(10, 16, 24, .18); }
+#ballCtl .bcGridV { left: 50%; top: 8%; bottom: 8%; width: 1px; margin-left: -0.5px; }
+#ballCtl .bcGridH { top: 50%; left: 8%; right: 8%; height: 1px; margin-top: -0.5px; }
+/* 红点 = 触球部位（transform 定位：(-1..1, -1..1) → 球面内圈） */
+#ballCtl .bcDot {
+  position: absolute; left: 50%; top: 50%;
+  width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%;
+  background: #ff3b30;
+  border: 1.5px solid rgba(255, 255, 255, .9);
+  box-shadow: 0 0 8px rgba(255, 59, 48, .55);
+  will-change: transform;
+}
+/* 正中时红点微微呼吸提示"这是满力点"；移开就停 */
+@keyframes bcPulse { 0%, 100% { box-shadow: 0 0 6px rgba(255, 59, 48, .45); } 50% { box-shadow: 0 0 12px rgba(255, 59, 48, .8); } }
+#ballCtl .bcDot.center { animation: bcPulse 1.6s ease-in-out infinite; }
+#ballCtl small {
+  /* ★ 绝对定位挂球下方：右边缘对齐球右缘、文字向左生长 ——
+   *   标签长短彻底不影响 #ballCtl 尺寸（球心恒定），也不会在窄窗口下溢出屏幕右侧。 */
+  position: absolute; right: 0; top: calc(100% + 4px);
+  font-size: 9px; letter-spacing: 1.5px; color: rgba(255, 255, 255, .62);
+  text-shadow: 0 1px 3px #000; white-space: nowrap;
+}
+/* 触屏：往上面挪一点别和虚拟按钮打架（同样补回容器高锁死的那 17px） */
+body.touch #ballCtl { right: 14px; bottom: 167px; }
+/* ★ 侧键拖红点期间：整颗球描一圈红边 —— "现在鼠标在推红点、不转镜头"的即时反馈 */
+body.spotdrag #ballCtl .bcBall {
+  border-color: rgba(255, 90, 90, .9);
+  box-shadow: 0 0 0 3px rgba(255, 59, 48, .28), 0 2px 10px rgba(0, 0, 0, .45),
+              inset 0 -6px 12px rgba(0, 0, 0, .16);
+}
+body.spotdrag #ballCtl small { color: #ffc9c5; }
+
+/* —— 中键转盘 —— */
+/* 自由查看视角：屏幕下方给个常驻小提示，免得忘了自己还在自由镜头里 */
+body.freecam::after {
+  content: '🎥 自由视角 · 鼠标环视 / 滚轮远近 / R·F 升降 · V 退出';
+  position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+  padding: 5px 12px; border-radius: 999px;
+  background: rgba(8,10,14,.62); border: 1px solid rgba(255,255,255,.18);
+  color: #dff1ff; font-size: 12px; letter-spacing: .3px; z-index: 40;
+  pointer-events: none; backdrop-filter: blur(4px);
+}
+
+#emoteWheel {
+  position: absolute; left: 50%; top: 50%; z-index: 30;
+  width: 220px; height: 220px; margin: -110px 0 0 -110px;
+  pointer-events: none;
+  animation: ewIn .13s ease-out both;
+}
+@keyframes ewIn { from { opacity: 0; transform: scale(.88); } }
+#emoteWheel svg { width: 100%; height: 100%; overflow: visible; }
+#emoteWheel .ewSeg {
+  fill: rgba(10, 16, 24, .72);
+  stroke: rgba(255, 255, 255, .16); stroke-width: 1;
+  transition: fill .1s;
+}
+#emoteWheel .ewSeg.on {
+  fill: rgba(255, 214, 92, .9);
+  stroke: #fff;
+}
+#emoteWheel .ewSeg.dis { fill: rgba(10, 16, 24, .35); }
+#emoteWheel .ewTxt {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .5px;
+  fill: rgba(255, 255, 255, .9); text-anchor: middle; dominant-baseline: middle;
+  pointer-events: none;
+}
+#emoteWheel .ewTxt.on { fill: #14161a; }
+#emoteWheel .ewTxt.dis { fill: rgba(255, 255, 255, .28); }
+#emoteWheel .ewIcon {
+  font-size: 15px; text-anchor: middle; dominant-baseline: middle;
+  pointer-events: none;
+}
+#emoteWheel .ewCore {
+  position: absolute; left: 50%; top: 50%; width: 74px; height: 74px;
+  margin: -37px 0 0 -37px; border-radius: 50%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: rgba(8, 12, 18, .9); border: 1px solid rgba(255, 255, 255, .2);
+  color: #fff;
+}
+#emoteWheel .ewCore b { font-size: 20px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+#emoteWheel .ewCore small { margin-top: 3px; font-size: 8.5px; letter-spacing: .5px; color: rgba(255, 255, 255, .5); }
+
+/* ============================================================
+ *  ★ 特色功能提示条（屏幕左边缘竖排）
+ *  用户要求：每个特色功能一块**半透明小 UI**，**键位名写在小 UI 的右下角**。
+ *
+ *  设计取舍：
+ *   · 半透明 + 毛玻璃，但不能太抢戏 —— 玩家踢球时视线在中间，左边只是余光扫到，
+ *     所以整体压到 .5 透明度，鼠标滑过才亮起来（那说明你在找键位）。
+ *   · 键位放右下角是本题的硬要求，同时它也顺带解决了"小 UI 内放不下长键位名"
+ *     这个问题：右下角独立成块，内容长一点也只是往左伸，不会把标题挤变形。
+ *   · 整条 pointer-events:none —— HUD 是覆盖在画布上的，能点就会挡住转镜头。
+ * ============================================================ */
+#featTips {
+  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+  z-index: 5; display: flex; flex-direction: column; gap: 5px;
+  pointer-events: none; user-select: none;
+}
+#featTips .ft {
+  position: relative;
+  /* 两行式：功能名在上，键位胶囊钉在**右下角**（绝对定位）。
+   * min-height 是必需的 —— 胶囊高约 13px、距底 5px，块高 < 36px 时它就会跨过中线
+   * 变成"垂直居中"，那就不叫右下角了。
+   * ★ 本轮按用户要求整体再小一号（150→132 / 36→31 / 字号 10.5→10）：
+   *   31px 高时胶囊中心仍在块中线之下（21 > 15.5），右下角关系不破。 */
+  min-width: 132px; min-height: 31px;
+  padding: 5px 8px 3px 10px;
+  /* 半透明板 + 左侧一道青线（和右上角 modeBox/coinBox 同一套语言） */
+  background: linear-gradient(90deg, rgba(9, 13, 19, .42), rgba(9, 13, 19, .16));
+  border-left: 2px solid rgba(92, 225, 255, .55);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%);
+  opacity: .5; transition: opacity .18s ease, transform .18s ease;
+  animation: ftIn .34s cubic-bezier(.22, .9, .25, 1) both;
+}
+#featTips:hover .ft { opacity: .82; }
+#featTips .ft:hover { opacity: 1; transform: translateX(3px); }
+/* 逐条错开淡入（纯观感，别让它们一起"啪"地出现） */
+#featTips .ft:nth-child(1) { animation-delay: .02s; }
+#featTips .ft:nth-child(2) { animation-delay: .06s; }
+#featTips .ft:nth-child(3) { animation-delay: .10s; }
+#featTips .ft:nth-child(4) { animation-delay: .14s; }
+#featTips .ft:nth-child(5) { animation-delay: .18s; }
+#featTips .ft:nth-child(6) { animation-delay: .22s; }
+#featTips .ft:nth-child(7) { animation-delay: .26s; }
+#featTips .ft:nth-child(8) { animation-delay: .30s; }
+#featTips .ft:nth-child(9) { animation-delay: .34s; }
+@keyframes ftIn { from { opacity: 0; transform: translateX(-16px); } }
+#featTips .ft b {
+  display: block; font-size: 10px; font-weight: 700; letter-spacing: .7px;
+  color: rgba(255, 255, 255, .9); text-shadow: 0 1px 3px rgba(0, 0, 0, .9);
+}
+/* ★ 键位名：钉在小 UI 的**右下角**（本题硬要求）—— 独立小胶囊 */
+#featTips .ft kbd {
+  position: absolute; right: 7px; bottom: 5px;
+  padding: 1.5px 5px 2px;
+  font-family: inherit; font-size: 9px; font-weight: 800; letter-spacing: .5px;
+  color: #d8f6ff; background: rgba(92, 225, 255, .16);
+  border: 1px solid rgba(92, 225, 255, .42); border-radius: 3px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .5);
+  white-space: nowrap;
+}
+/* 侧键拖红点时的即时反馈（main.js 给 #featTips 加 .spotDrag） */
+#featTips.spotDrag { --ftHot: 1; }
+#featTips.spotDrag .ft.on { opacity: 1; border-left-color: #ff5a5a; }
+#featTips.spotDrag .ft.on kbd { color: #ffe0dd; background: rgba(255, 59, 48, .22); border-color: rgba(255, 90, 90, .6); }
+
+/* 竖屏 / 窄屏：左边这条会压到球场和摇杆，收起来（键位提示还有设置页里的"操作"） */
+@media (max-width: 760px), (max-height: 520px) {
+  #featTips { display: none; }
+}
+/* 触屏：左边缘是虚拟摇杆的地盘，同样收掉 */
+body.touch #featTips { display: none; }
+/* 选择页 / 自由视角：前者还没进场，后者屏幕下方已有专属提示，都不该叠这一条 */
+body.in-menu #featTips { display: none; }
+
+/* ============================================================
+ *  ★★ 用户改版（本轮）：
+ *   ① 踢球 / 攻击 / 跳舞模式那块 UI（#modeBox）—— 保持半透明，
+ *      但要按模式"加点颜色底"（踢球=青 / 攻击=红 / 跳舞=紫）。
+ *      为什么必须写在文件最末：上面 1439 行的"黑白灰统一层"用
+ *      `background: rgba(10,12,16,.55) !important` 把这块压成了纯黑，
+ *      不带 !important 一律盖不住。
+ *   ② 提示键位的小框（#featTips .ft kbd）再小一号。
+ *
+ *  半透明色底做法：用**带 alpha 的模式色**做渐变叠在暗底上 ——
+ *  既保留"看得见球场"的半透明质感，又一眼看出当前是什么模式。
+ *  块上的模式类由 main.js 的 controls.onMode 挂（kick / attack / dance）。
+ * ============================================================ */
+#modeBox {
+  /* 暗底先兜住可读性（alpha 比原来的 .55 略降，颜色底才透得出来） */
+  background:
+    linear-gradient(100deg, rgba(92, 225, 255, .26), rgba(92, 225, 255, .07) 62%, rgba(9, 13, 19, .30)),
+    rgba(9, 13, 19, .42) !important;
+  border: 1px solid rgba(92, 225, 255, .30) !important;
+  border-left: 3px solid #5ce1ff !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .42), inset 0 0 18px rgba(92, 225, 255, .07) !important;
+  transition: background .22s ease, border-color .22s ease, box-shadow .22s ease;
+}
+#modeBox.attack {
+  background:
+    linear-gradient(100deg, rgba(255, 93, 110, .28), rgba(255, 93, 110, .07) 62%, rgba(9, 13, 19, .30)),
+    rgba(9, 13, 19, .42) !important;
+  border-color: rgba(255, 93, 110, .34) !important;
+  border-left-color: #ff5d6e !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .42), inset 0 0 18px rgba(255, 93, 110, .08) !important;
+}
+#modeBox.dance {
+  background:
+    linear-gradient(100deg, rgba(181, 140, 255, .30), rgba(181, 140, 255, .07) 62%, rgba(9, 13, 19, .30)),
+    rgba(9, 13, 19, .42) !important;
+  border-color: rgba(181, 140, 255, .36) !important;
+  border-left-color: #b58cff !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .42), inset 0 0 18px rgba(181, 140, 255, .09) !important;
+}
+
+/* —— 提示键位的小框：再小一号（用户要求）——
+ *   padding / 字号 / 圆角 / 描边全部收紧，但仍然钉在右下角（right 6 / bottom 4 < 10px）。 */
+#featTips .ft kbd {
+  right: 6px; bottom: 4px;
+  padding: 1px 4px 1.5px;
+  font-size: 8px; font-weight: 800; letter-spacing: .3px;
+  border-radius: 2px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .45);
+}
+
+/* ============================================================
+ *  ★★ 第一人称（球员视角）—— 学习主流足球游戏 FC/FIFA
+ *
+ *  设计取舍：
+ *   · 准星（#crosshair）**只在第一人称显示**。第三人称不显示（原设计"靠机位和
+ *     力度条表达瞄准"，保持不动）；第一人称没有准星就不知道往哪踢，所以必须给。
+ *   · 自身脚下队环 / 头顶三角标识 / 名牌：这些是 **3D Sprite/Mesh，不是 DOM**，
+ *     所以不在 CSS 里处理，改由 main.js 在切视角时设 `visible`（见 applyViewMode）。
+ *   · 必须写在文件最末 —— 前面有 `#crosshair { display:none !important }`，
+ *     同优先级下靠后 + !important 才能盖住（踩过"UI 被黑白灰层压掉"的坑）。
+ * ============================================================ */
+body.fps #crosshair { display: block !important; opacity: .9; }

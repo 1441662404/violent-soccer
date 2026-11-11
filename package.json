@@ -1,0 +1,21 @@
+{
+  "name": "violent-soccer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "3D 第三人称暴力足球联机游戏",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^5.3.0",
+    "fflate": "^0.8.3",
+    "socket.io": "^4.8.4",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.4"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>电视转播比分条 - 左上角</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'PingFang SC', 'Helvetica Neue', sans-serif;
+    background: linear-gradient(135deg, #1a3a2a 0%, #2a5a3a 50%, #1a3a2a 100%);
+    min-height: 100vh;
+    position: relative;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* 模拟球场背景 */
+  .pitch-lines {
+    position: absolute;
+    inset: 0;
+    background: 
+      linear-gradient(90deg, transparent 49.5%, rgba(255,255,255,0.05) 49.5%, rgba(255,255,255,0.05) 50.5%, transparent 50.5%),
+      linear-gradient(0deg, transparent 49.5%, rgba(255,255,255,0.05) 49.5%, rgba(255,255,255,0.05) 50.5%, transparent 50.5%);
+  }
+
+  /* 左上角比分条 */
+  .broadcast-score {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    display: flex;
+    align-items: stretch;
+    height: 36px;
+    border-radius: 4px;
+    overflow: hidden;
+    font-size: 13px;
+    font-weight: 600;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  }
+
+  /* 左队 */
+  .bs-team {
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    gap: 6px;
+    color: #fff;
+  }
+
+  .bs-team.left {
+    background: #c60b1e; /* 皇马红 */
+  }
+
+  .bs-team.right {
+    background: #dc052d; /* 拜仁红 */
+  }
+
+  .bs-crest {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+  }
+
+  .bs-name {
+    letter-spacing: 0.5px;
+  }
+
+  /* 中间比分 */
+  .bs-score {
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    background: #1a1a2e;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+    gap: 4px;
+  }
+
+  .bs-score-num {
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .bs-score-num.away {
+    color: rgba(255,255,255,0.5);
+  }
+
+  /* 时间 */
+  .bs-time {
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    background: #ffd700;
+    color: #000;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  }
+
+  /* 欧冠星战 logo 区 */
+  .bs-ucl {
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    background: #0a1a3a;
+    color: #fff;
+    font-size: 10px;
+    letter-spacing: 1px;
+  }
+
+  /* 其他样式变体 */
+  .variant-label {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.3);
+    font-size: 12px;
+    letter-spacing: 2px;
+  }
+
+  /* 第二种样式：透明简约 */
+  .broadcast-score.style2 {
+    top: 70px;
+  }
+  .style2 .bs-team.left { background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); }
+  .style2 .bs-team.right { background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); }
+  .style2 .bs-score { background: rgba(0,0,0,0.5); backdrop-filter: blur(10px); }
+  .style2 .bs-time { background: rgba(255,215,0,0.9); }
+  .style2 .bs-ucl { background: rgba(10,26,58,0.8); }
+</style>
+</head>
+<body>
+
+<div class="pitch-lines"></div>
+
+<!-- 样式1：欧冠官方风格（实色） -->
+<div class="broadcast-score">
+  <div class="bs-ucl">UCL</div>
+  <div class="bs-team left">
+    <div class="bs-crest">⚪</div>
+    <div class="bs-name">RMA</div>
+  </div>
+  <div class="bs-score">
+    <span class="bs-score-num">2</span>
+    <span class="bs-score-num away">1</span>
+  </div>
+  <div class="bs-team right">
+    <div class="bs-name">BAY</div>
+    <div class="bs-crest">🔴</div>
+  </div>
+  <div class="bs-time">78'</div>
+</div>
+
+<!-- 样式2：毛玻璃简约风 -->
+<div class="broadcast-score style2">
+  <div class="bs-team left">
+    <div class="bs-crest">⚪</div>
+    <div class="bs-name">皇马</div>
+  </div>
+  <div class="bs-score">
+    <span class="bs-score-num">2</span>
+    <span class="bs-score-num away">1</span>
+  </div>
+  <div class="bs-team right">
+    <div class="bs-name">拜仁</div>
+    <div class="bs-crest">🔴</div>
+  </div>
+  <div class="bs-time">78'</div>
+</div>
+
+<div class="variant-label">电视转播左上角比分条 · 两种风格</div>
+
+</body>
+</html>

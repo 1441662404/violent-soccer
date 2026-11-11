@@ -1,0 +1,19 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#111}canvas{display:block}</style></head><body>
+<script>
+window.__AB = (urlA, urlB, outW, outH) => new Promise((res, rej) => {
+  const load = (u) => new Promise((r, j) => { const im = new Image(); im.crossOrigin='anonymous'; im.onload=()=>r(im); im.onerror=j; im.src=u; });
+  Promise.all([load(urlA), load(urlB)]).then(([ia, ib]) => {
+    const c = document.createElement('canvas');
+    c.width = outW || 900; c.height = outH || 620;
+    const g = c.getContext('2d');
+    g.fillStyle = '#111'; g.fillRect(0,0,c.width,c.height);
+    const half = c.width/2 - 6;
+    const fit = (im, x, w) => { const s = Math.min(w/im.width, c.height/im.height); const dw=im.width*s, dh=im.height*s; g.drawImage(im, x + (w-dw)/2, (c.height-dh)/2, dw, dh); };
+    fit(ia, 0, half); fit(ib, half + 12, half);
+    g.fillStyle='#9fe'; g.font='bold 17px sans-serif';
+    g.fillText('参考视频', 10, 24);
+    g.fillText('游戏里', half + 22, 24);
+    res(c.toDataURL('image/png'));
+  }).catch(rej);
+});
+</script></body></html>
